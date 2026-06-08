@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Unidad {
+  idUnidad      Int          @id @default(autoincrement()) @map("id_unidad")
+  codigoUnidad  String       @unique @map("codigo_unidad")
+  placa         String?
+  estado        EstadoUnidad @default(ACTIVA)
+  creadoEn      DateTime     @default(now()) @map("creado_en")
+  actualizadoEn DateTime     @updatedAt @map("actualizado_en")
+
+  pasosParadaActual PasoParadaActual[]
+  tiemposTramo      TiempoTramo[]
+  registrosGps      RegistroGps[]
+  trayectorias      Trayectoria[]
+  estimacionesEta   EstimacionEta[]
+
+  @@map("unidades")
+}
+
+model Ruta {
+  idRuta                   Int        @id @default(autoincrement()) @map("id_ruta")
+  idRutaProveedor          Int?       @unique @map("id_ruta_proveedor")
+  codigoRuta               String?    @map("codigo_ruta")
+  nombreRuta               String     @map("nombre_ruta")
+  origen                   String?
+  destino                  String?
+  latitudSalida            Decimal?   @map("latitud_salida") @db.Decimal(10, 7)
+  longitudSalida           Decimal?   @map("longitud_salida") @db.Decimal(10, 7)
+  latitudLlegada           Decimal?   @map("latitud_llegada") @db.Decimal(10, 7)
+  longitudLlegada          Decimal?   @map("longitud_llegada") @db.Decimal(10, 7)
+  radioControlMetros       Int        @default(80) @map("radio_control_metros")
+  tiempoMinimoRecorridoMin Int        @default(30) @map("tiempo_minimo_recorrido_min")
+  tiempoMaximoRecorridoMin Int        @default(240) @map("tiempo_maximo_recorrido_min")
+  estado                   EstadoRuta @default(ACTIVA)
+  creadoEn                 DateTime   @default(now()) @map("creado_en")
+  actualizadoEn            DateTime   @updatedAt @map("actualizado_en")
+
+  pasosParadaActual PasoParadaActual[]
+  tiemposTramo      TiempoTramo[]
+  rutaParadas       RutaParada[]
+  trayectorias      Trayectoria[]
+  estimacionesEta   EstimacionEta[]
+  registrosGps      RegistroGps[]
+  rutaShapes        RutaShape[]
+
+  @@map("rutas")
+}
+
+model Parada {
+  idParada      Int          @id @default(autoincrement()) @map("id_parada")
+  nombreParada  String       @map("nombre_parada")
+  latitud       Decimal      @db.Decimal(10, 7)
+  longitud      Decimal      @db.Decimal(10, 7)
+  estado        EstadoParada @default(ACTIVA)
+  creadoEn      DateTime     @default(now()) @map("creado_en")
+  actualizadoEn DateTime     @updatedAt @map("actualizado_en")
+
+  pasosParadaActual PasoParadaActual[]
+  rutaParadas       RutaParada[]
+  estimacionesEta   EstimacionEta[]
+
+  @@map("paradas")
+}
+
+model RutaParada {
+  idRutaParada Int         @id @default(autoincrement()) @map("id_ruta_parada")
+  idRuta       Int         @map("id_ruta")
+  idParada     Int         @map("id_parada")
+  ordenParada  Int         @map("orden_parada")
+  sentido      SentidoRuta @default(IDA)
+
+  ruta   Ruta   @relation(fields: [idRuta], references: [idRuta])
+  parada Parada @relation(fields: [idParada], references: [idParada])
+
+  @@unique([idRuta, idParada, sentido])
+  @@unique([idRuta, ordenParada, sentido])
+  @@map("ruta_paradas")
+}
+
+enum SentidoRuta {
+  IDA
+  VUELTA
+}
+
+model RegistroGps {
+  idRegistroGps         Int                @id @default(autoincrement()) @map("id_registro_gps")
+  idUnidad              Int                @map("id_unidad")
+  idRuta                Int?               @map("id_ruta")
+  fechaHora             DateTime           @map("fecha_hora")
+  latitud               Decimal            @db.Decimal(10, 7)
+  longitud              Decimal            @db.Decimal(10, 7)
+  velocidad             Decimal?           @db.Decimal(6, 2)
+  rumbo                 Decimal?           @db.Decimal(6, 2)
+  esOperativo           Boolean            @default(true) @map("es_operativo")
+  motivoNoOperativo     MotivoNoOperativo?
+  estadoSalidaProveedor Int?               @map("estado_salida_proveedor")
+  creadoEn              DateTime           @default(now()) @map("creado_en")
+
+  unidad Unidad @relation(fields: [idUnidad], references: [idUnidad])
+  ruta   Ruta?  @relation(fields: [idRuta], references: [idRuta])
+
+  @@unique([idUnidad, fechaHora, latitud, longitud])
+  @@index([idUnidad, fechaHora])
+  @@index([idRuta, fechaHora])
+  @@index([esOperativo])
+  @@map("registros_gps")
+}
+
+model Trayectoria {
+  idTrayectoria Int               @id @default(autoincrement()) @map("id_trayectoria")
+  idUnidad      Int               @map("id_unidad")
+  idRuta        Int               @map("id_ruta")
+  estado        EstadoTrayectoria @default(EN_CURSO)
+  motivoCierre  String?           @map("motivo_cierre")
+  fechaInicio   DateTime          @map("fecha_inicio")
+  fechaFin      DateTime?         @map("fecha_fin")
+  creadoEn      DateTime          @default(now()) @map("creado_en")
+
+  unidad Unidad @relation(fields: [idUnidad], references: [idUnidad])
+  ruta   Ruta   @relation(fields: [idRuta], references: [idRuta])
+
+  @@index([idUnidad, idRuta])
+  @@index([estado])
+  @@index([fechaInicio])
+  @@map("trayectorias")
+}
+
+model EstimacionEta {
+  idEta                 Int                    @id @default(autoincrement()) @map("id_eta")
+  idUnidad              Int                    @map("id_unidad")
+  idRuta                Int                    @map("id_ruta")
+  idParada              Int                    @map("id_parada")
+  fechaHoraCalculo      DateTime               @map("fecha_hora_calculo")
+  tiempoEstimadoLlegada Int                    @map("tiempo_estimado_llegada")
+  estadoConfiabilidad   EstadoConfiabilidadEta @default(CONFIABLE) @map("estado_confiabilidad")
+  creadoEn              DateTime               @default(now()) @map("creado_en")
+
+  unidad Unidad @relation(fields: [idUnidad], references: [idUnidad])
+  ruta   Ruta   @relation(fields: [idRuta], references: [idRuta])
+  parada Parada @relation(fields: [idParada], references: [idParada])
+
+  @@index([idUnidad, idRuta, idParada])
+  @@index([fechaHoraCalculo])
+  @@map("estimaciones_eta")
+}
+
+model RutaShape {
+  idRutaShape Int      @id @default(autoincrement()) @map("id_ruta_shape")
+  idRuta      Int      @map("id_ruta")
+  latitud     Decimal  @db.Decimal(10, 7)
+  longitud    Decimal  @db.Decimal(10, 7)
+  secuencia   Int
+  generadoEn  DateTime @default(now()) @map("generado_en")
+
+  ruta Ruta @relation(fields: [idRuta], references: [idRuta])
+
+  @@unique([idRuta, secuencia])
+  @@index([idRuta])
+  @@map("ruta_shapes")
+}
+
+model TiempoTramo {
+  idTiempoTramo    Int      @id @default(autoincrement()) @map("id_tiempo_tramo")
+  idUnidad         Int      @map("id_unidad")
+  idRuta           Int      @map("id_ruta")
+  idParadaOrigen   Int      @map("id_parada_origen")
+  idParadaDestino  Int      @map("id_parada_destino")
+  fechaHoraOrigen  DateTime @map("fecha_hora_origen")
+  fechaHoraDestino DateTime @map("fecha_hora_destino")
+  duracionSegundos Int      @map("duracion_segundos")
+  creadoEn         DateTime @default(now()) @map("creado_en")
+
+  unidad Unidad @relation(fields: [idUnidad], references: [idUnidad])
+  ruta   Ruta   @relation(fields: [idRuta], references: [idRuta])
+
+  @@index([idRuta, idParadaOrigen, idParadaDestino])
+  @@index([idUnidad, idRuta])
+  @@index([fechaHoraOrigen])
+  @@map("tiempos_tramo")
+}
+
+model PasoParadaActual {
+  idPasoParadaActual Int      @id @default(autoincrement()) @map("id_paso_parada_actual")
+  idUnidad           Int      @map("id_unidad")
+  idRuta             Int      @map("id_ruta")
+  idParada           Int      @map("id_parada")
+  fechaHoraPaso      DateTime @map("fecha_hora_paso")
+  ordenParada        Int      @map("orden_parada")
+  creadoEn           DateTime @default(now()) @map("creado_en")
+  actualizadoEn      DateTime @updatedAt @map("actualizado_en")
+
+  unidad Unidad @relation(fields: [idUnidad], references: [idUnidad])
+  ruta   Ruta   @relation(fields: [idRuta], references: [idRuta])
+  parada Parada @relation(fields: [idParada], references: [idParada])
+
+  @@unique([idUnidad, idRuta])
+  @@index([idRuta])
+  @@map("pasos_parada_actual")
+}
+
+enum EstadoConfiabilidadEta {
+  CONFIABLE
+  SIN_HISTORICO
+  DETENIDO
+  FUERA_DE_RUTA
+  DATOS_DESACTUALIZADOS
+}
+
+enum EstadoUnidad {
+  ACTIVA
+  INACTIVA
+  MANTENIMIENTO
+}
+
+enum EstadoRuta {
+  ACTIVA
+  INACTIVA
+}
+
+enum EstadoParada {
+  ACTIVA
+  INACTIVA
+}
+
+enum MotivoNoOperativo {
+  FUERA_DE_HORARIO
+  COORDENADAS_INVALIDAS
+  RUTA_NO_IDENTIFICADA
+  FUERA_DE_RUTA
+  DESVIO_PROLONGADO
+  SIN_MONITOREO_OPERATIVO
+}
+
+enum EstadoTrayectoria {
+  EN_CURSO
+  COMPLETADA
+  INCOMPLETA
+  DESVIO_PROLONGADO
+  SIN_SENAL
+}

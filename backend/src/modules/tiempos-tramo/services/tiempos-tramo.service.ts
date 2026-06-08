@@ -1,0 +1,287 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../../database/prisma.service';
+import { RegistroGps } from '@prisma/client';
+import { GPS_RADIO_DETECCION_PARADA_METROS } from '../../../common/constants/gps.constants';
+import { calcularDistanciaMetros } from '../../../common/utils/geo.util';
+
+@Injectable()
+export class TiemposTramoService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async listarTiemposTramo() {
+    return this.prisma.tiempoTramo.findMany({
+      orderBy: {
+        fechaHoraOrigen: 'desc',
+      },
+      include: {
+        unidad: true,
+        ruta: true,
+      },
+    });
+  }
+
+  async listarPorRuta(idRuta: number) {
+    return this.prisma.tiempoTramo.findMany({
+      where: {
+        idRuta,
+      },
+      orderBy: {
+        fechaHoraOrigen: 'desc',
+      },
+      include: {
+        unidad: true,
+        ruta: true,
+      },
+    });
+  }
+
+  async procesarPasoPorParada(registroGps: RegistroGps) {
+  if (!registroGps.esOperativo || !registroGps.idRuta) {
+    return {
+      accion: 'IGNORADO',
+      motivo: 'Registro GPS no operativo o sin ruta.',
+    };
+  }
+
+  const rutaParadas = await this.prisma.rutaParada.findMany({
+    where: {
+      idRuta: registroGps.idRuta,
+    },
+    include: {
+      parada: true,
+    },
+    orderBy: {
+      ordenParada: 'asc',
+    },
+  });
+
+  if (rutaParadas.length === 0) {
+    return {
+      accion: 'IGNORADO',
+      motivo: 'La ruta no tiene paradas registradas.',
+    };
+  }
+
+  const latitudBus = Number(registroGps.latitud);
+  const longitudBus = Number(registroGps.longitud);
+
+  const paradasCercanas = rutaParadas
+    .map((rutaParada) => {
+      const distancia = calcularDistanciaMetros(
+        latitudBus,
+        longitudBus,
+        Number(rutaParada.parada.latitud),
+        Number(rutaParada.parada.longitud),
+      );
+
+      return {
+        rutaParada,
+        distancia,
+      };
+    })
+    .filter((item) => item.distancia <= GPS_RADIO_DETECCION_PARADA_METROS)
+    .sort((a, b) => a.distancia - b.distancia);
+
+  const paradaDetectada = paradasCercanas[0];
+
+  if (!paradaDetectada) {
+    return {
+      accion: 'SIN_PARADA_CERCANA',
+    };
+  }
+
+  const paradaActual = paradaDetectada.rutaParada;
+
+  const ultimoPaso = await this.prisma.pasoParadaActual.findUnique({
+    where: {
+      idUnidad_idRuta: {
+        idUnidad: registroGps.idUnidad,
+        idRuta: registroGps.idRuta,
+      },
+    },
+  });
+
+  if (!ultimoPaso) {
+    await this.prisma.pasoParadaActual.create({
+      data: {
+        idUnidad: registroGps.idUnidad,
+        idRuta: registroGps.idRuta,
+        idParada: paradaActual.idParada,
+        ordenParada: paradaActual.ordenParada,
+        fechaHoraPaso: registroGps.fechaHora,
+      },
+    });
+
+    return {
+      accion: 'PRIMERA_PARADA_DETECTADA',
+      parada: paradaActual.ordenParada,
+    };
+  }
+
+  if (ultimoPaso.idParada === paradaActual.idParada) {
+    return {
+      accion: 'MISMA_PARADA_IGNORADA',
+      parada: paradaActual.ordenParada,
+    };
+  }
+
+  if (paradaActual.ordenParada !== ultimoPaso.ordenParada + 1) {
+    await this.prisma.pasoParadaActual.update({
+      where: {
+        idPasoParadaActual: ultimoPaso.idPasoParadaActual,
+      },
+      data: {
+        idParada: paradaActual.idParada,
+        ordenParada: paradaActual.ordenParada,
+        fechaHoraPaso: registroGps.fechaHora,
+      },
+    });
+
+    return {
+      accion: 'SALTO_DE_PARADA',
+      paradaAnterior: ultimoPaso.ordenParada,
+      paradaActual: paradaActual.ordenParada,
+    };
+  }
+
+  const duracionSegundos = Math.round(
+    (registroGps.fechaHora.getTime() - ultimoPaso.fechaHoraPaso.getTime()) /
+      1000,
+  );
+
+  const tiempoTramo = await this.prisma.tiempoTramo.create({
+    data: {
+      idUnidad: registroGps.idUnidad,
+      idRuta: registroGps.idRuta,
+      idParadaOrigen: ultimoPaso.idParada,
+      idParadaDestino: paradaActual.idParada,
+      fechaHoraOrigen: ultimoPaso.fechaHoraPaso,
+      fechaHoraDestino: registroGps.fechaHora,
+      duracionSegundos,
+    },
+  });
+
+  await this.prisma.pasoParadaActual.update({
+    where: {
+      idPasoParadaActual: ultimoPaso.idPasoParadaActual,
+    },
+    data: {
+      idParada: paradaActual.idParada,
+      ordenParada: paradaActual.ordenParada,
+      fechaHoraPaso: registroGps.fechaHora,
+    },
+  });
+
+  return {
+    accion: 'TIEMPO_TRAMO_REGISTRADO',
+    tiempoTramo,
+  };
+}
+
+async obtenerPromediosPorRuta(idRuta: number) {
+  const promedios = await this.prisma.tiempoTramo.groupBy({
+    by: ['idParadaOrigen', 'idParadaDestino'],
+    where: {
+      idRuta,
+    },
+    _avg: {
+      duracionSegundos: true,
+    },
+    _count: {
+      idTiempoTramo: true,
+    },
+    orderBy: [
+      {
+        idParadaOrigen: 'asc',
+      },
+      {
+        idParadaDestino: 'asc',
+      },
+    ],
+  });
+
+  return {
+    idRuta,
+    totalTramos: promedios.length,
+    tramos: promedios.map((tramo) => ({
+      idParadaOrigen: tramo.idParadaOrigen,
+      idParadaDestino: tramo.idParadaDestino,
+      promedioSegundos: Math.round(tramo._avg.duracionSegundos ?? 0),
+      cantidadMuestras: tramo._count.idTiempoTramo,
+    })),
+  };
+}
+
+async obtenerCoberturaPorRuta(idRuta: number) {
+  const rutaParadas = await this.prisma.rutaParada.findMany({
+    where: {
+      idRuta,
+    },
+    include: {
+      parada: true,
+    },
+    orderBy: {
+      ordenParada: 'asc',
+    },
+  });
+
+  const promedios = await this.prisma.tiempoTramo.groupBy({
+    by: ['idParadaOrigen', 'idParadaDestino'],
+    where: {
+      idRuta,
+    },
+    _avg: {
+      duracionSegundos: true,
+    },
+    _count: {
+      idTiempoTramo: true,
+    },
+  });
+
+  const mapaPromedios = new Map<string, { promedio: number; muestras: number }>();
+
+  for (const promedio of promedios) {
+    const clave = `${promedio.idParadaOrigen}-${promedio.idParadaDestino}`;
+
+    mapaPromedios.set(clave, {
+      promedio: Math.round(promedio._avg.duracionSegundos ?? 0),
+      muestras: promedio._count.idTiempoTramo,
+    });
+  }
+
+  const tramos = [];
+
+  for (let i = 0; i < rutaParadas.length - 1; i++) {
+    const origen = rutaParadas[i];
+    const destino = rutaParadas[i + 1];
+
+    const clave = `${origen.idParada}-${destino.idParada}`;
+    const historico = mapaPromedios.get(clave);
+
+    tramos.push({
+      ordenOrigen: origen.ordenParada,
+      paradaOrigen: origen.parada.nombreParada,
+      ordenDestino: destino.ordenParada,
+      paradaDestino: destino.parada.nombreParada,
+      tieneHistorico: Boolean(historico),
+      promedioSegundos: historico?.promedio ?? null,
+      muestras: historico?.muestras ?? 0,
+    });
+  }
+
+  const tramosConHistorico = tramos.filter((tramo) => tramo.tieneHistorico).length;
+
+  return {
+    idRuta,
+    totalParadas: rutaParadas.length,
+    totalTramos: tramos.length,
+    tramosConHistorico,
+    tramosSinHistorico: tramos.length - tramosConHistorico,
+    porcentajeCobertura:
+      tramos.length > 0
+        ? Math.round((tramosConHistorico / tramos.length) * 100)
+        : 0,
+    tramos,
+  };
+}
+}
