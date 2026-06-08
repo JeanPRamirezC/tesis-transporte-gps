@@ -18,8 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "railway:build": "npm install && npx prisma generate && npm run build",
-"railway:start": "npx prisma migrate deploy && node dist/main"
+    "railway:build": "npx prisma generate && npm run build",
+"railway:start": "npx prisma migrate deploy && node dist/main.js"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
