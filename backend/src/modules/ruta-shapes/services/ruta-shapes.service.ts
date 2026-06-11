@@ -618,7 +618,7 @@ async generarShapeFinal(idRuta: number) {
       trayectoriasProcesadas.push({
         idTrayectoria: trayectoria.idTrayectoria,
         totalGps: registros.length,
-        puntos: this.normalizarPuntos(puntosAjustados, puntosNormalizados),
+        puntos: puntosAjustados,
       });
     }
   }
@@ -641,9 +641,8 @@ async generarShapeFinal(idRuta: number) {
 
   const shapeFinal: { latitud: number; longitud: number }[] = [];
 
-  // 3. Consenso Espacial (Búsqueda de vecinos más cercanos físicamente)
-  for (let i = 0; i < puntosNormalizados; i++) {
-    const puntoReferencia = trayectoriaReferencia.puntos[i];
+  // 3. Consenso Espacial (Búsqueda de vecinos más cercanos físicamente preservando curvas reales)
+  for (const puntoReferencia of trayectoriaReferencia.puntos) {
     const puntosCercanos: { latitud: number; longitud: number }[] = [puntoReferencia];
 
     for (const trayectoria of trayectoriasProcesadas) {
