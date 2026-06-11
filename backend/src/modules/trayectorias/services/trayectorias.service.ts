@@ -198,4 +198,69 @@ export class TrayectoriasService {
       distanciaLlegada,
     };
   }
+
+  async listarTrayectoriasValidasPorRuta(idRuta: number) {
+  const trayectorias = await this.prisma.trayectoria.findMany({
+    where: {
+      idRuta,
+      estado: 'COMPLETADA',
+      fechaFin: {
+        not: null,
+      },
+    },
+    include: {
+      unidad: true,
+      ruta: true,
+    },
+    orderBy: {
+      fechaInicio: 'desc',
+    },
+  });
+
+  const resultado = [];
+
+  for (const trayectoria of trayectorias) {
+    if (!trayectoria.fechaFin) continue;
+
+    const totalGps = await this.prisma.registroGps.count({
+      where: {
+        idRuta,
+        idUnidad: trayectoria.idUnidad,
+        esOperativo: true,
+        fechaHora: {
+          gte: trayectoria.fechaInicio,
+          lte: trayectoria.fechaFin,
+        },
+      },
+    });
+
+    const duracionMinutos = Math.round(
+      (trayectoria.fechaFin.getTime() - trayectoria.fechaInicio.getTime()) /
+        1000 /
+        60,
+    );
+
+    resultado.push({
+      idTrayectoria: trayectoria.idTrayectoria,
+      idRuta: trayectoria.idRuta,
+      codigoRuta: trayectoria.ruta.codigoRuta,
+      nombreRuta: trayectoria.ruta.nombreRuta,
+      idUnidad: trayectoria.idUnidad,
+      codigoUnidad: trayectoria.unidad.codigoUnidad,
+      placa: trayectoria.unidad.placa,
+      fechaInicio: trayectoria.fechaInicio,
+      fechaFin: trayectoria.fechaFin,
+      duracionMinutos,
+      totalGps,
+      esValidaVisualmente: totalGps >= 100,
+    });
+  }
+
+  return {
+    idRuta,
+    totalTrayectorias: resultado.length,
+    trayectoriasValidas: resultado.filter((t) => t.esValidaVisualmente).length,
+    trayectorias: resultado,
+  };
+}
 }

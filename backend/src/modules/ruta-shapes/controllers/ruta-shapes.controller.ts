@@ -42,4 +42,26 @@ export class RutaShapesController {
 generarShapeDesdeParadas(@Param('idRuta', ParseIntPipe) idRuta: number) {
   return this.rutaShapesService.generarShapeDesdeParadas(idRuta);
 }
+@Post('snap-to-roads/:idRuta')
+@ApiOperation({
+  summary: 'Generar shape de ruta usando GPS real y Google Roads API.',
+})
+@ApiParam({
+  name: 'idRuta',
+  example: 7,
+})
+generarShapeSnapToRoads(@Param('idRuta', ParseIntPipe) idRuta: number) {
+  return this.rutaShapesService.generarShapeSnapToRoads(idRuta);
+}
+@Post('generar-final/:idRuta')
+@ApiOperation({
+  summary: 'Generar shape final usando varias trayectorias y consenso espacial.',
+})
+@ApiParam({
+  name: 'idRuta',
+  example: 7,
+})
+generarShapeFinal(@Param('idRuta', ParseIntPipe) idRuta: number) {
+  return this.rutaShapesService.generarShapeFinal(idRuta);
+}
 }

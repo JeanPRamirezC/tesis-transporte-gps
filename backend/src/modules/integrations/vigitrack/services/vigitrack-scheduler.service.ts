@@ -9,7 +9,7 @@ export class VigitrackSchedulerService {
 
   constructor(private readonly vigitrackService: VigitrackService) {}
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron(CronExpression.EVERY_10_SECONDS)
   async sincronizarMonitoreoAutomaticamente() {
     if (this.ejecutando) {
       this.logger.warn('Sincronización omitida: proceso anterior en ejecución.');

@@ -34,4 +34,16 @@ export class TrayectoriasController {
   obtenerTrayectoriaPorId(@Param('id', ParseIntPipe) id: number) {
     return this.trayectoriasService.obtenerTrayectoriaPorId(id);
   }
+
+  @Get('ruta/:idRuta/validas')
+@ApiOperation({
+  summary: 'Listar trayectorias completadas útiles para visualización por ruta.',
+})
+@ApiParam({
+  name: 'idRuta',
+  example: 7,
+})
+listarTrayectoriasValidasPorRuta(@Param('idRuta', ParseIntPipe) idRuta: number) {
+  return this.trayectoriasService.listarTrayectoriasValidasPorRuta(idRuta);
+}
 }

@@ -27,4 +27,16 @@ export class RutasController {
   obtenerRutaPorId(@Param('id', ParseIntPipe) id: number) {
     return this.rutasService.obtenerRutaPorId(id);
   }
+
+  @Get(':idRuta/validar-paradas-gps')
+@ApiOperation({
+  summary: 'Validar paradas de una ruta contra registros GPS reales.',
+})
+@ApiParam({
+  name: 'idRuta',
+  example: 7,
+})
+validarParadasContraGps(@Param('idRuta', ParseIntPipe) idRuta: number) {
+  return this.rutasService.validarParadasContraGps(idRuta);
+}
 }
