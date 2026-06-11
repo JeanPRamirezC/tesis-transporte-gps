@@ -61,6 +61,14 @@ export class MapaService {
         idRuta: ruta.idRuta,
         codigoRuta: ruta.codigoRuta,
         nombreRuta: ruta.nombreRuta,
+        salida: ruta.latitudSalida && ruta.longitudSalida ? {
+          latitud: Number(ruta.latitudSalida),
+          longitud: Number(ruta.longitudSalida),
+        } : null,
+        llegada: ruta.latitudLlegada && ruta.longitudLlegada ? {
+          latitud: Number(ruta.latitudLlegada),
+          longitud: Number(ruta.longitudLlegada),
+        } : null,
       },
       shape: shape.map((punto) => ({
         latitud: Number(punto.latitud),

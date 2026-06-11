@@ -155,40 +155,100 @@ export class TrayectoriasService {
         };
       }
 
-      if (
-        distanciaLlegada <= radioControl &&
-        minutosTranscurridos >= ruta.tiempoMinimoRecorridoMin
-      ) {
-        const trayectoriaCerrada = await this.prisma.trayectoria.update({
-          where: {
-            idTrayectoria: trayectoriaEnCurso.idTrayectoria,
-          },
-          data: {
-            estado: 'COMPLETADA',
-            fechaFin: registroGps.fechaHora,
-            motivoCierre: 'Llegada al punto final de la ruta.',
-          },
-        });
+      if (distanciaLlegada <= radioControl) {
+        if (minutosTranscurridos >= ruta.tiempoMinimoRecorridoMin) {
+          // Consultar registros GPS de la trayectoria hasta el momento
+          const registrosTrayectoria = await this.prisma.registroGps.findMany({
+            where: {
+              idRuta: trayectoriaEnCurso.idRuta,
+              idUnidad: trayectoriaEnCurso.idUnidad,
+              esOperativo: true,
+              fechaHora: {
+                gte: trayectoriaEnCurso.fechaInicio,
+                lte: registroGps.fechaHora,
+              },
+            },
+            select: {
+              latitud: true,
+              longitud: true,
+            },
+          });
 
-        return {
-          accion: 'TRAYECTORIA_COMPLETADA',
-          trayectoria: trayectoriaCerrada,
-          distanciaLlegada,
-          minutosTranscurridos,
-        };
-      }
+          // Estimar longitud de la ruta a partir de paradas
+          const rutaParadas = await this.prisma.rutaParada.findMany({
+            where: { idRuta: trayectoriaEnCurso.idRuta },
+            include: { parada: true },
+            orderBy: { ordenParada: 'asc' },
+          });
 
-      if (
-        distanciaLlegada <= radioControl &&
-        minutosTranscurridos < ruta.tiempoMinimoRecorridoMin
-      ) {
-        return {
-          accion: 'PUNTO_LLEGADA_IGNORADO',
-          motivo: 'La unidad pasó por el punto final antes del tiempo mínimo.',
-          distanciaLlegada,
-          minutosTranscurridos,
-          tiempoMinimo: ruta.tiempoMinimoRecorridoMin,
-        };
+          let longitudRutaMetros = 0;
+          for (let i = 1; i < rutaParadas.length; i++) {
+            longitudRutaMetros += calcularDistanciaMetros(
+              Number(rutaParadas[i - 1].parada.latitud),
+              Number(rutaParadas[i - 1].parada.longitud),
+              Number(rutaParadas[i].parada.latitud),
+              Number(rutaParadas[i].parada.longitud),
+            );
+          }
+
+          if (longitudRutaMetros === 0) {
+            longitudRutaMetros = 5000; // Valor por defecto estimado
+          }
+
+          // La unidad debe haberse alejado al menos el 30% de la longitud de la ruta (entre 500m y 1500m)
+          const distanciaMinimaAlejamiento = Math.max(500, Math.min(1500, longitudRutaMetros * 0.3));
+
+          let distanciaMaxima = 0;
+          for (const reg of registrosTrayectoria) {
+            const dist = calcularDistanciaMetros(
+              Number(ruta.latitudSalida),
+              Number(ruta.longitudSalida),
+              Number(reg.latitud),
+              Number(reg.longitud),
+            );
+            if (dist > distanciaMaxima) {
+              distanciaMaxima = dist;
+            }
+          }
+
+          if (distanciaMaxima >= distanciaMinimaAlejamiento) {
+            const trayectoriaCerrada = await this.prisma.trayectoria.update({
+              where: {
+                idTrayectoria: trayectoriaEnCurso.idTrayectoria,
+              },
+              data: {
+                estado: 'COMPLETADA',
+                fechaFin: registroGps.fechaHora,
+                motivoCierre: 'Llegada al punto final de la ruta.',
+              },
+            });
+
+            return {
+              accion: 'TRAYECTORIA_COMPLETADA',
+              trayectoria: trayectoriaCerrada,
+              distanciaLlegada,
+              minutosTranscurridos,
+              distanciaMaxima,
+            };
+          } else {
+            // Falso positivo: no se alejó lo suficiente (estuvo estacionado)
+            return {
+              accion: 'PUNTO_LLEGADA_IGNORADO',
+              motivo: `La unidad no se alejó lo suficiente del origen de la ruta (${Math.round(distanciaMaxima)}m de ${Math.round(distanciaMinimaAlejamiento)}m requeridos).`,
+              distanciaLlegada,
+              minutosTranscurridos,
+              distanciaMaxima,
+            };
+          }
+        } else {
+          return {
+            accion: 'PUNTO_LLEGADA_IGNORADO',
+            motivo: 'La unidad pasó por el punto final antes del tiempo mínimo.',
+            distanciaLlegada,
+            minutosTranscurridos,
+            tiempoMinimo: ruta.tiempoMinimoRecorridoMin,
+          };
+        }
       }
     }
 
@@ -252,7 +312,7 @@ export class TrayectoriasService {
       fechaFin: trayectoria.fechaFin,
       duracionMinutos,
       totalGps,
-      esValidaVisualmente: totalGps >= 100,
+      esValidaVisualmente: totalGps >= 50,
     });
   }
 

@@ -15,6 +15,14 @@ export class RutasController {
     return this.rutasService.listarRutas();
   }
 
+  @Get('puntos-control')
+  @ApiOperation({
+    summary: 'Listar puntos de salida y llegada de todas las rutas.',
+  })
+  listarPuntosControl() {
+    return this.rutasService.listarPuntosControl();
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener una ruta por su identificador interno.',

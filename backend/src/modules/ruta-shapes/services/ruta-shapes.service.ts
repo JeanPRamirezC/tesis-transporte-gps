@@ -376,7 +376,7 @@ async generarShapeSnapToRoads(idRuta: number) {
     }
   }
 
-  const puntosReducidos = this.reducirPuntosCercanosSimple(puntosGps, 25);
+  const puntosReducidos = this.reducirPuntosCercanosSimple(puntosGps, 10);
 
   if (puntosReducidos.length < 2) {
     return {
@@ -446,13 +446,29 @@ private normalizarPuntos(
   puntos: { latitud: number; longitud: number }[],
   total = 100,
 ) {
-  if (puntos.length <= total) return puntos;
+  if (puntos.length === 0) {
+    return [];
+  }
 
-  const resultado = [];
+  if (puntos.length === 1) {
+    return Array.from({ length: total }, () => puntos[0]);
+  }
+
+  const resultado: { latitud: number; longitud: number }[] = [];
 
   for (let i = 0; i < total; i++) {
-    const index = Math.round((i * (puntos.length - 1)) / (total - 1));
-    resultado.push(puntos[index]);
+    const posicion = (i * (puntos.length - 1)) / (total - 1);
+    const indexInferior = Math.floor(posicion);
+    const indexSuperior = Math.ceil(posicion);
+    const factor = posicion - indexInferior;
+
+    const puntoA = puntos[indexInferior];
+    const puntoB = puntos[indexSuperior];
+
+    resultado.push({
+      latitud: puntoA.latitud + (puntoB.latitud - puntoA.latitud) * factor,
+      longitud: puntoA.longitud + (puntoB.longitud - puntoA.longitud) * factor,
+    });
   }
 
   return resultado;
@@ -467,12 +483,8 @@ private promedioPuntos(puntos: { latitud: number; longitud: number }[]) {
 
 async generarShapeFinal(idRuta: number) {
   const MAX_TRAYECTORIAS = 10;
-  const MIN_GPS = 50;
-  const PUNTOS_NORMALIZADOS = 300;
-  const RADIO_CONSENSO = 60;
-
+  
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-
   if (!apiKey) {
     throw new Error('No existe GOOGLE_MAPS_API_KEY en variables de entorno.');
   }
@@ -485,13 +497,43 @@ async generarShapeFinal(idRuta: number) {
     throw new NotFoundException(`No existe una ruta con id ${idRuta}`);
   }
 
+  // 1. Estimar la longitud física de la ruta usando las paradas registradas
+  const rutaParadas = await this.prisma.rutaParada.findMany({
+    where: { idRuta },
+    include: { parada: true },
+    orderBy: { ordenParada: 'asc' },
+  });
+
+  let longitudRutaMetros = 0;
+  for (let i = 1; i < rutaParadas.length; i++) {
+    longitudRutaMetros += calcularDistanciaMetros(
+      Number(rutaParadas[i - 1].parada.latitud),
+      Number(rutaParadas[i - 1].parada.longitud),
+      Number(rutaParadas[i].parada.latitud),
+      Number(rutaParadas[i].parada.longitud),
+    );
+  }
+
+  // Si no hay paradas registradas, asumimos un valor por defecto de 5 km
+  if (longitudRutaMetros === 0) {
+    longitudRutaMetros = 5000;
+  }
+
+  // 2. Parámetros adaptativos calculados dinámicamente
+  // Mínimo de puntos GPS requeridos (al menos 1 cada 200 metros, min 12, max 40)
+  const minGps = Math.max(12, Math.min(40, Math.round(longitudRutaMetros / 200)));
+  
+  // Puntos normalizados (un punto cada 45 metros aproximadamente, min 45, max 500)
+  const puntosNormalizados = Math.max(45, Math.min(500, Math.round(longitudRutaMetros / 45)));
+  
+  // Radio de consenso espacial (dinámico entre 50m y 120m)
+  const radioConsenso = Math.max(50, Math.min(120, Math.round(longitudRutaMetros * 0.01)));
+
   const trayectorias = await this.prisma.trayectoria.findMany({
     where: {
       idRuta,
       estado: 'COMPLETADA',
-      fechaFin: {
-        not: null,
-      },
+      fechaFin: { not: null },
     },
     orderBy: {
       fechaFin: 'desc',
@@ -523,28 +565,27 @@ async generarShapeFinal(idRuta: number) {
       },
     });
 
-    if (registros.length < MIN_GPS) continue;
+    // Filtro adaptativo de puntos mínimos
+    if (registros.length < minGps) continue;
 
     const DISTANCIA_MAXIMA_SALTO_METROS = 600;
 
-const puntosGps = registros.map((registro) => ({
-  latitud: Number(registro.latitud),
-  longitud: Number(registro.longitud),
-}));
+    const puntosGps = registros.map((registro) => ({
+      latitud: Number(registro.latitud),
+      longitud: Number(registro.longitud),
+    }));
 
+    const puntosSinSaltos = this.eliminarSaltosGps(
+      puntosGps,
+      DISTANCIA_MAXIMA_SALTO_METROS,
+    );
 
-const puntosSinSaltos = this.eliminarSaltosGps(
-  puntosGps,
-  DISTANCIA_MAXIMA_SALTO_METROS,
-);
-
-const puntosReducidos = this.reducirPuntosCercanosSimple(
-  puntosSinSaltos,
-  25,
-);
+    const puntosReducidos = this.reducirPuntosCercanosSimple(
+      puntosSinSaltos,
+      25,
+    );
 
     const bloques = this.dividirEnBloques(puntosReducidos, 100);
-
     const puntosAjustados: { latitud: number; longitud: number }[] = [];
 
     for (const bloque of bloques) {
@@ -577,7 +618,7 @@ const puntosReducidos = this.reducirPuntosCercanosSimple(
       trayectoriasProcesadas.push({
         idTrayectoria: trayectoria.idTrayectoria,
         totalGps: registros.length,
-        puntos: this.normalizarPuntos(puntosAjustados, PUNTOS_NORMALIZADOS),
+        puntos: this.normalizarPuntos(puntosAjustados, puntosNormalizados),
       });
     }
   }
@@ -589,32 +630,52 @@ const puntosReducidos = this.reducirPuntosCercanosSimple(
       ruta: ruta.nombreRuta,
       trayectoriasDisponibles: trayectorias.length,
       trayectoriasProcesadas: trayectoriasProcesadas.length,
+      requeridoGpsPorTrayectoria: minGps,
     };
   }
 
+  // La trayectoria de referencia será la que contenga la mayor cantidad de puntos gps registrados
   const trayectoriaReferencia = trayectoriasProcesadas.reduce((mejor, actual) =>
     actual.totalGps > mejor.totalGps ? actual : mejor,
   );
 
   const shapeFinal: { latitud: number; longitud: number }[] = [];
 
-  for (let i = 0; i < PUNTOS_NORMALIZADOS; i++) {
-    const puntosIndice = trayectoriasProcesadas
-      .map((trayectoria) => trayectoria.puntos[i])
-      .filter(Boolean);
-
+  // 3. Consenso Espacial (Búsqueda de vecinos más cercanos físicamente)
+  for (let i = 0; i < puntosNormalizados; i++) {
     const puntoReferencia = trayectoriaReferencia.puntos[i];
+    const puntosCercanos: { latitud: number; longitud: number }[] = [puntoReferencia];
 
-    const puntosCercanos = puntosIndice.filter((punto) => {
-      const distancia = calcularDistanciaMetros(
+    for (const trayectoria of trayectoriasProcesadas) {
+      if (trayectoria.idTrayectoria === trayectoriaReferencia.idTrayectoria) continue;
+
+      // Buscar el punto más cercano espacialmente al punto de referencia
+      let puntoMasCercano = trayectoria.puntos[0];
+      let distanciaMinima = calcularDistanciaMetros(
         puntoReferencia.latitud,
         puntoReferencia.longitud,
-        punto.latitud,
-        punto.longitud,
+        puntoMasCercano.latitud,
+        puntoMasCercano.longitud,
       );
 
-      return distancia <= RADIO_CONSENSO;
-    });
+      for (let j = 1; j < trayectoria.puntos.length; j++) {
+        const dist = calcularDistanciaMetros(
+          puntoReferencia.latitud,
+          puntoReferencia.longitud,
+          trayectoria.puntos[j].latitud,
+          trayectoria.puntos[j].longitud,
+        );
+        if (dist < distanciaMinima) {
+          distanciaMinima = dist;
+          puntoMasCercano = trayectoria.puntos[j];
+        }
+      }
+
+      // Si la distancia mínima física está dentro del radio de consenso, lo consideramos en el promedio
+      if (distanciaMinima <= radioConsenso) {
+        puntosCercanos.push(puntoMasCercano);
+      }
+    }
 
     if (puntosCercanos.length >= 2) {
       shapeFinal.push(this.promedioPuntos(puntosCercanos));
@@ -637,9 +698,10 @@ const puntosReducidos = this.reducirPuntosCercanosSimple(
   });
 
   return {
-    mensaje: 'Shape final generado correctamente por consenso espacial.',
+    mensaje: 'Shape final generado correctamente por consenso espacial adaptativo.',
     idRuta,
     ruta: ruta.nombreRuta,
+    longitudEstimadaMetros: Math.round(longitudRutaMetros),
     trayectoriasUsadas: trayectoriasProcesadas.map((t) => ({
       idTrayectoria: t.idTrayectoria,
       totalGps: t.totalGps,
@@ -647,9 +709,9 @@ const puntosReducidos = this.reducirPuntosCercanosSimple(
     totalPuntosShape: shapeFinal.length,
     parametros: {
       maxTrayectorias: MAX_TRAYECTORIAS,
-      minGps: MIN_GPS,
-      puntosNormalizados: PUNTOS_NORMALIZADOS,
-      radioConsensoMetros: RADIO_CONSENSO,
+      minGpsRequerido: minGps,
+      puntosNormalizados,
+      radioConsensoMetros: radioConsenso,
     },
   };
 }
@@ -705,11 +767,170 @@ private eliminarSaltosGps(
 
     if (distancia <= distanciaMaximaMetros) {
       resultado.push(actual);
+    } else {
+      // Si la distancia supera el límite, verificamos si es un ruido de GPS aislado
+      // o una pérdida legítima de señal (gap) en donde la ruta continúa más adelante.
+      if (i < puntos.length - 1) {
+        const siguiente = puntos[i + 1];
+        const distActualSiguiente = calcularDistanciaMetros(
+          actual.latitud,
+          actual.longitud,
+          siguiente.latitud,
+          siguiente.longitud,
+        );
+        const distAnteriorSiguiente = calcularDistanciaMetros(
+          anterior.latitud,
+          anterior.longitud,
+          siguiente.latitud,
+          siguiente.longitud,
+        );
+
+        // Caso 1: El punto siguiente vuelve a estar cerca del punto anterior,
+        // lo que significa que el punto 'actual' fue un pico de ruido aislado (glitch).
+        // Lo omitimos, y la comparación del ciclo continuará usando el 'anterior'.
+        if (distAnteriorSiguiente <= distanciaMaximaMetros && distActualSiguiente > distanciaMaximaMetros) {
+          continue;
+        }
+      }
+
+      // Caso 2: Es el último punto o los siguientes puntos continúan la ruta
+      // a partir de este nuevo punto 'actual' (gap de transmisión).
+      // Lo agregamos para no truncar la ruta.
+      resultado.push(actual);
     }
   }
 
   return resultado;
 }
 
+async generarShapeDesdeTrayectoria(idTrayectoria: number) {
+  const DISTANCIA_MAXIMA_SALTO_METROS = 600;
+  const DISTANCIA_MINIMA_ENTRE_PUNTOS = 10;
 
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('No existe GOOGLE_MAPS_API_KEY en variables de entorno.');
+  }
+
+  const trayectoria = await this.prisma.trayectoria.findUnique({
+    where: { idTrayectoria },
+    include: {
+      ruta: true,
+      unidad: true,
+    },
+  });
+
+  if (!trayectoria) {
+    throw new NotFoundException(
+      `No existe una trayectoria con id ${idTrayectoria}`,
+    );
+  }
+
+  if (!trayectoria.fechaFin) {
+    return {
+      mensaje: 'La trayectoria no tiene fecha de fin.',
+      idTrayectoria,
+    };
+  }
+
+  const registros = await this.prisma.registroGps.findMany({
+    where: {
+      idRuta: trayectoria.idRuta,
+      idUnidad: trayectoria.idUnidad,
+      esOperativo: true,
+      fechaHora: {
+        gte: trayectoria.fechaInicio,
+        lte: trayectoria.fechaFin,
+      },
+    },
+    orderBy: {
+      fechaHora: 'asc',
+    },
+  });
+
+  if (registros.length < 2) {
+    return {
+      mensaje: 'La trayectoria no tiene suficientes registros GPS.',
+      idTrayectoria,
+      totalGps: registros.length,
+    };
+  }
+
+  const puntosGps = registros.map((registro) => ({
+    latitud: Number(registro.latitud),
+    longitud: Number(registro.longitud),
+  }));
+
+  const puntosSinSaltos = this.eliminarSaltosGps(
+    puntosGps,
+    DISTANCIA_MAXIMA_SALTO_METROS,
+  );
+
+  const puntosReducidos = this.reducirPuntosCercanosSimple(
+    puntosSinSaltos,
+    DISTANCIA_MINIMA_ENTRE_PUNTOS,
+  );
+
+  const bloques = this.dividirEnBloques(puntosReducidos, 100);
+
+  const puntosAjustados: { latitud: number; longitud: number }[] = [];
+
+  for (const bloque of bloques as Array<
+    { latitud: number; longitud: number }[]
+  >) {
+    const path = bloque
+      .map((punto) => `${punto.latitud},${punto.longitud}`)
+      .join('|');
+
+    const url = `https://roads.googleapis.com/v1/snapToRoads?path=${path}&interpolate=true&key=${apiKey}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        mensaje: 'Error al consultar Google Roads API.',
+        idTrayectoria,
+        error: data,
+      };
+    }
+
+    for (const punto of data.snappedPoints ?? []) {
+      puntosAjustados.push({
+        latitud: punto.location.latitude,
+        longitud: punto.location.longitude,
+      });
+    }
+  }
+
+  await this.prisma.rutaShape.deleteMany({
+    where: { idRuta: trayectoria.idRuta },
+  });
+
+  await this.prisma.rutaShape.createMany({
+    data: puntosAjustados.map((punto, index) => ({
+      idRuta: trayectoria.idRuta,
+      latitud: new Prisma.Decimal(punto.latitud),
+      longitud: new Prisma.Decimal(punto.longitud),
+      secuencia: index + 1,
+    })),
+  });
+
+  return {
+    mensaje: 'Shape generado desde trayectoria individual.',
+    idRuta: trayectoria.idRuta,
+    ruta: trayectoria.ruta.nombreRuta,
+    idTrayectoria: trayectoria.idTrayectoria,
+    unidad: trayectoria.unidad.codigoUnidad,
+    totalGpsOriginales: registros.length,
+    totalGpsSinSaltos: puntosSinSaltos.length,
+    totalGpsReducidos: puntosReducidos.length,
+    totalPuntosAjustados: puntosAjustados.length,
+    parametros: {
+      distanciaMaximaSaltoMetros: DISTANCIA_MAXIMA_SALTO_METROS,
+      distanciaMinimaEntrePuntos: DISTANCIA_MINIMA_ENTRE_PUNTOS,
+    },
+  };
+}
 }

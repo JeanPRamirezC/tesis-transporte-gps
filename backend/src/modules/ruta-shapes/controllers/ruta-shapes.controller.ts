@@ -64,4 +64,17 @@ generarShapeSnapToRoads(@Param('idRuta', ParseIntPipe) idRuta: number) {
 generarShapeFinal(@Param('idRuta', ParseIntPipe) idRuta: number) {
   return this.rutaShapesService.generarShapeFinal(idRuta);
 }
+@Post('generar-desde-trayectoria/:idTrayectoria')
+@ApiOperation({
+  summary: 'Generar shape usando una trayectoria específica.',
+})
+@ApiParam({
+  name: 'idTrayectoria',
+  example: 20,
+})
+generarShapeDesdeTrayectoria(
+  @Param('idTrayectoria', ParseIntPipe) idTrayectoria: number,
+) {
+  return this.rutaShapesService.generarShapeDesdeTrayectoria(idTrayectoria);
+}
 }

@@ -23,9 +23,11 @@ type Parada = {
 type Props = {
   shape: Punto[];
   paradas: Parada[];
+  salida?: { latitud: number; longitud: number } | null;
+  llegada?: { latitud: number; longitud: number } | null;
 };
 
-export function RutaMapa({ shape, paradas }: Props) {
+export function RutaMapa({ shape, paradas, salida, llegada }: Props) {
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
   });
@@ -108,6 +110,28 @@ export function RutaMapa({ shape, paradas }: Props) {
             />
           );
         })}
+
+        {salida && (
+          <Marker
+            position={{ lat: salida.latitud, lng: salida.longitud }}
+            title="Punto de Salida Oficial (Despacho)"
+            icon={{
+              url: 'http://maps.google.com/mapfiles/ms/icons/grn-pushpin.png',
+              scaledSize: new google.maps.Size(35, 35),
+            }}
+          />
+        )}
+
+        {llegada && (
+          <Marker
+            position={{ lat: llegada.latitud, lng: llegada.longitud }}
+            title="Punto de Llegada Oficial (Control)"
+            icon={{
+              url: 'http://maps.google.com/mapfiles/ms/icons/red-pushpin.png',
+              scaledSize: new google.maps.Size(35, 35),
+            }}
+          />
+        )}
       </GoogleMap>
     </div>
   );

@@ -24,6 +24,44 @@ export class RutasService {
     });
   }
 
+  async listarPuntosControl() {
+    const rutas = await this.prisma.ruta.findMany({
+      where: {
+        estado: 'ACTIVA',
+      },
+      select: {
+        idRuta: true,
+        codigoRuta: true,
+        nombreRuta: true,
+        origen: true,
+        destino: true,
+        latitudSalida: true,
+        longitudSalida: true,
+        latitudLlegada: true,
+        longitudLlegada: true,
+      },
+      orderBy: {
+        nombreRuta: 'asc',
+      },
+    });
+
+    return rutas.map((ruta) => ({
+      idRuta: ruta.idRuta,
+      codigoRuta: ruta.codigoRuta,
+      nombreRuta: ruta.nombreRuta,
+      origen: ruta.origen,
+      destino: ruta.destino,
+      salida: ruta.latitudSalida && ruta.longitudSalida ? {
+        latitud: Number(ruta.latitudSalida),
+        longitud: Number(ruta.longitudSalida),
+      } : null,
+      llegada: ruta.latitudLlegada && ruta.longitudLlegada ? {
+        latitud: Number(ruta.latitudLlegada),
+        longitud: Number(ruta.longitudLlegada),
+      } : null,
+    }));
+  }
+
   async obtenerRutaPorId(idRuta: number) {
     const ruta = await this.prisma.ruta.findUnique({
       where: { idRuta },

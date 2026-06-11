@@ -11,6 +11,8 @@ export default async function RutaPage({ params }: PageProps) {
   const { idRuta } = await params;
   const data = await obtenerDatosMapaPorRuta(Number(idRuta));
 
+  console.log('Ruta data:', data.ruta);
+
   return (
     <main className="p-6">
       <h1 className="text-2xl font-bold">{data.ruta.nombreRuta}</h1>
@@ -20,7 +22,12 @@ export default async function RutaPage({ params }: PageProps) {
       <p>Paradas: {data.paradas.length}</p>
       <p>Unidades: {data.unidades.length}</p>
 
-      <RutaMapa shape={data.shape} paradas={data.paradas} />
+      <RutaMapa
+        shape={data.shape}
+        paradas={data.paradas}
+        salida={data.ruta.salida}
+        llegada={data.ruta.llegada}
+      />
     </main>
   );
 }
