@@ -468,7 +468,7 @@ private promedioPuntos(puntos: { latitud: number; longitud: number }[]) {
 async generarShapeFinal(idRuta: number) {
   const MAX_TRAYECTORIAS = 10;
   const MIN_GPS = 50;
-  const PUNTOS_NORMALIZADOS = 500;
+  const PUNTOS_NORMALIZADOS = 300;
   const RADIO_CONSENSO = 60;
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
