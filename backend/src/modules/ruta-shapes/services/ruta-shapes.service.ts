@@ -526,8 +526,8 @@ async generarShapeFinal(idRuta: number) {
   // Puntos normalizados (un punto cada 45 metros aproximadamente, min 45, max 500)
   const puntosNormalizados = Math.max(45, Math.min(500, Math.round(longitudRutaMetros / 45)));
   
-  // Radio de consenso espacial (dinámico entre 50m y 120m)
-  const radioConsenso = Math.max(50, Math.min(120, Math.round(longitudRutaMetros * 0.01)));
+  // Radio de consenso espacial (dinámico entre 15m y 30m para evitar mezclar calles paralelas o esquinas lejanas)
+  const radioConsenso = Math.max(15, Math.min(30, Math.round(longitudRutaMetros * 0.002)));
 
   const trayectorias = await this.prisma.trayectoria.findMany({
     where: {
@@ -683,12 +683,42 @@ async generarShapeFinal(idRuta: number) {
     }
   }
 
+  // 4. Ajustar el shape final (promediado) a las carreteras físicas con Google Roads API
+  const bloquesFinal = this.dividirEnBloques(shapeFinal, 100);
+  const shapeAjustado: { latitud: number; longitud: number }[] = [];
+
+  for (const bloque of bloquesFinal) {
+    const path = bloque
+      .map((punto) => `${punto.latitud},${punto.longitud}`)
+      .join('|');
+
+    const url = `https://roads.googleapis.com/v1/snapToRoads?path=${path}&interpolate=true&key=${apiKey}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Error al consultar Google Roads API para el shape final:', data);
+      break;
+    }
+
+    for (const punto of data.snappedPoints ?? []) {
+      shapeAjustado.push({
+        latitud: punto.location.latitude,
+        longitud: punto.location.longitude,
+      });
+    }
+  }
+
+  // Si por alguna razón el ajuste falla o devuelve menos de 2 puntos, usamos el shape promediado original como fallback
+  const puntosAGuardar = shapeAjustado.length >= 2 ? shapeAjustado : shapeFinal;
+
   await this.prisma.rutaShape.deleteMany({
     where: { idRuta },
   });
 
   await this.prisma.rutaShape.createMany({
-    data: shapeFinal.map((punto, index) => ({
+    data: puntosAGuardar.map((punto, index) => ({
       idRuta,
       latitud: new Prisma.Decimal(punto.latitud),
       longitud: new Prisma.Decimal(punto.longitud),
@@ -697,7 +727,7 @@ async generarShapeFinal(idRuta: number) {
   });
 
   return {
-    mensaje: 'Shape final generado correctamente por consenso espacial adaptativo.',
+    mensaje: 'Shape final generado correctamente por consenso espacial adaptativo y ajustado a calles.',
     idRuta,
     ruta: ruta.nombreRuta,
     longitudEstimadaMetros: Math.round(longitudRutaMetros),
@@ -705,12 +735,13 @@ async generarShapeFinal(idRuta: number) {
       idTrayectoria: t.idTrayectoria,
       totalGps: t.totalGps,
     })),
-    totalPuntosShape: shapeFinal.length,
+    totalPuntosShape: puntosAGuardar.length,
     parametros: {
       maxTrayectorias: MAX_TRAYECTORIAS,
       minGpsRequerido: minGps,
       puntosNormalizados,
       radioConsensoMetros: radioConsenso,
+      seAjustoACalles: shapeAjustado.length >= 2,
     },
   };
 }
