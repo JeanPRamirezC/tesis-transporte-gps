@@ -108,7 +108,7 @@ export class VigitrackService {
 
 async sincronizarMonitoreo() {
   const permitirFueraDeHorario =
-    process.env.GPS_ALLOW_OUT_OF_HOURS === 'true';
+    process.env.GPS_ALLOW_OUT_OF_HOURS !== 'false';
 
   if (!permitirFueraDeHorario && !estaDentroDeVentanaOperativa()) {
     return {
