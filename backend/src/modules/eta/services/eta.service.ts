@@ -16,7 +16,17 @@ export class EtaService {
     }
 
     const pasosActuales = await this.prisma.pasoParadaActual.findMany({
-      where: { idRuta },
+      where: {
+        idRuta,
+        unidad: {
+          trayectorias: {
+            some: {
+              idRuta,
+              estado: 'EN_CURSO',
+            },
+          },
+        },
+      },
       include: {
         unidad: true,
         parada: true,
