@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { RegistroGps } from '@prisma/client';
 import { calcularDistanciaMetros } from '../../../common/utils/geo.util';
 import { PrismaService } from '../../../database/prisma.service';
+import { toZonedTime } from 'date-fns-tz';
+import { ECUADOR_TIMEZONE } from '../../../common/constants/timezone.constants';
 
 @Injectable()
 export class TrayectoriasService {
@@ -368,7 +370,7 @@ export class TrayectoriasService {
       },
     });
 
-    const ahora = new Date();
+    const ahora = toZonedTime(new Date(), ECUADOR_TIMEZONE);
     let cerradasCount = 0;
 
     for (const trayectoria of trayectoriasEnCurso) {
