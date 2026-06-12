@@ -34,7 +34,7 @@ model Ruta {
   longitudSalida           Decimal?   @map("longitud_salida") @db.Decimal(10, 7)
   latitudLlegada           Decimal?   @map("latitud_llegada") @db.Decimal(10, 7)
   longitudLlegada          Decimal?   @map("longitud_llegada") @db.Decimal(10, 7)
-  radioControlMetros       Int        @default(80) @map("radio_control_metros")
+  radioControlMetros       Int        @default(125) @map("radio_control_metros")
   tiempoMinimoRecorridoMin Int        @default(30) @map("tiempo_minimo_recorrido_min")
   tiempoMaximoRecorridoMin Int        @default(240) @map("tiempo_maximo_recorrido_min")
   estado                   EstadoRuta @default(ACTIVA)

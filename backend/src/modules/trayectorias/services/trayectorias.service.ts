@@ -112,6 +112,40 @@ export class TrayectoriasService {
     const radioControl = ruta.radioControlMetros;
 
     if (!trayectoriaEnCurso && distanciaInicio <= radioControl) {
+      // Cerrar cualquier otra trayectoria activa de la misma unidad en otras rutas
+      const trayectoriasActivasMismaUnidad = await this.prisma.trayectoria.findMany({
+        where: {
+          idUnidad: registroGps.idUnidad,
+          estado: 'EN_CURSO',
+        },
+      });
+
+      for (const tActiva of trayectoriasActivasMismaUnidad) {
+        const ultimoGps = await this.prisma.registroGps.findFirst({
+          where: {
+            idUnidad: tActiva.idUnidad,
+            idRuta: tActiva.idRuta,
+            fechaHora: {
+              gte: tActiva.fechaInicio,
+            },
+          },
+          orderBy: {
+            fechaHora: 'desc',
+          },
+        });
+
+        const fechaFin = ultimoGps ? ultimoGps.fechaHora : tActiva.fechaInicio;
+
+        await this.prisma.trayectoria.update({
+          where: { idTrayectoria: tActiva.idTrayectoria },
+          data: {
+            estado: 'INCOMPLETA',
+            fechaFin,
+            motivoCierre: 'Nueva trayectoria iniciada en otra ruta.',
+          },
+        });
+      }
+
       const nuevaTrayectoria = await this.prisma.trayectoria.create({
         data: {
           idUnidad: registroGps.idUnidad,
@@ -323,4 +357,63 @@ export class TrayectoriasService {
     trayectorias: resultado,
   };
 }
+
+  async autocerrarTrayectoriasExcedidas() {
+    const trayectoriasEnCurso = await this.prisma.trayectoria.findMany({
+      where: {
+        estado: 'EN_CURSO',
+      },
+      include: {
+        ruta: true,
+      },
+    });
+
+    const ahora = new Date();
+    let cerradasCount = 0;
+
+    for (const trayectoria of trayectoriasEnCurso) {
+      const ruta = trayectoria.ruta;
+      if (!ruta) continue;
+
+      const minutosTranscurridos =
+        (ahora.getTime() - trayectoria.fechaInicio.getTime()) / 1000 / 60;
+
+      if (minutosTranscurridos >= ruta.tiempoMaximoRecorridoMin) {
+        const ultimoGps = await this.prisma.registroGps.findFirst({
+          where: {
+            idUnidad: trayectoria.idUnidad,
+            idRuta: trayectoria.idRuta,
+            fechaHora: {
+              gte: trayectoria.fechaInicio,
+            },
+          },
+          orderBy: {
+            fechaHora: 'desc',
+          },
+        });
+
+        const fechaFin = ultimoGps
+          ? ultimoGps.fechaHora
+          : new Date(trayectoria.fechaInicio.getTime() + ruta.tiempoMaximoRecorridoMin * 60 * 1000);
+
+        await this.prisma.trayectoria.update({
+          where: {
+            idTrayectoria: trayectoria.idTrayectoria,
+          },
+          data: {
+            estado: 'INCOMPLETA',
+            fechaFin,
+            motivoCierre: 'Cerrado automáticamente por límite de tiempo de recorrido (excedido).',
+          },
+        });
+
+        cerradasCount++;
+      }
+    }
+
+    return {
+      procesadas: trayectoriasEnCurso.length,
+      cerradas: cerradasCount,
+    };
+  }
 }

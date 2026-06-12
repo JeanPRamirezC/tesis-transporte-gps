@@ -3,6 +3,7 @@ import {
   BadGatewayException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { firstValueFrom } from 'rxjs';
@@ -27,6 +28,7 @@ import { TiemposTramoService } from '../../../tiempos-tramo/services/tiempos-tra
 
 @Injectable()
 export class VigitrackService {
+  private readonly logger = new Logger(VigitrackService.name);
   private readonly rutasUrl =
     'https://apismart7bus.vigitracklatam.com/rutas_28septiembre';
 
@@ -121,8 +123,15 @@ async sincronizarMonitoreo() {
   const registros = [];
 
   for (const item of monitoreo) {
-    const registro = await this.guardarMonitoreo(item);
-    registros.push(registro);
+    try {
+      const registro = await this.guardarMonitoreo(item);
+      registros.push(registro);
+    } catch (error) {
+      this.logger.error(
+        `Error procesando monitoreo para la unidad ${item.CodiVehiMoni?.trim() ?? 'desconocida'}: ${error.message}`,
+        error.stack,
+      );
+    }
   }
 
   return {
@@ -163,14 +172,30 @@ private convertirFechaVigitrack(fecha: string): Date {
 }
 
 private async guardarMonitoreo(item: VigitrackMonitoreo) {
-  const codigoUnidad = item.CodiVehiMoni.trim();
-  const placa = item.PlacVehiMoni.trim();
-  const codigoRuta = item.LetrRutaMoni.trim();
+  const codigoUnidad = item.CodiVehiMoni?.trim() ?? '';
+  const placa = item.PlacVehiMoni?.trim() ?? '';
+  const codigoRuta = item.LetrRutaMoni?.trim() ?? '';
+
+  if (!codigoUnidad) {
+    return {
+      estado: 'DESCARTADO',
+      motivo: 'Código de unidad vacío o nulo',
+    };
+  }
 
   const latitud = Number(item.UltiLatiMoni);
   const longitud = Number(item.UltiLongMoni);
   const velocidad = Number(item.UltiVeloMoni);
   const rumbo = Number(item.UltiRumbMoni);
+  
+  if (!item.UltiFechMoni) {
+    return {
+      codigoUnidad,
+      placa,
+      estado: 'DESCARTADO',
+      motivo: 'Fecha de monitoreo vacía o nula',
+    };
+  }
   const fechaHora = this.convertirFechaVigitrack(item.UltiFechMoni);
 
   if (Number.isNaN(latitud) || Number.isNaN(longitud)) {
