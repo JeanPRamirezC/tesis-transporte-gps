@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { RegistroGps } from '@prisma/client';
-import { GPS_RADIO_DETECCION_PARADA_METROS } from '../../../common/constants/gps.constants';
+import {
+  GPS_RADIO_DETECCION_PARADA_METROS,
+  GPS_MAX_DURACION_TRAMO_SEGUNDOS,
+} from '../../../common/constants/gps.constants';
 import { calcularDistanciaMetros } from '../../../common/utils/geo.util';
 
 @Injectable()
@@ -149,6 +152,26 @@ export class TiemposTramoService {
       1000,
   );
 
+  // Actualizar siempre el estado del bus para que pueda seguir su ruta
+  await this.prisma.pasoParadaActual.update({
+    where: {
+      idPasoParadaActual: ultimoPaso.idPasoParadaActual,
+    },
+    data: {
+      idParada: paradaActual.idParada,
+      ordenParada: paradaActual.ordenParada,
+      fechaHoraPaso: registroGps.fechaHora,
+    },
+  });
+
+  // Si el tiempo transcurrido es mayor al límite lógico, omitimos registrar el tramo
+  if (duracionSegundos > GPS_MAX_DURACION_TRAMO_SEGUNDOS) {
+    return {
+      accion: 'TIEMPO_TRAMO_IGNORADO',
+      motivo: `Duración de tramo excede el límite máximo permitido (${duracionSegundos}s > ${GPS_MAX_DURACION_TRAMO_SEGUNDOS}s), indicando descanso o parada prolongada.`,
+    };
+  }
+
   const tiempoTramo = await this.prisma.tiempoTramo.create({
     data: {
       idUnidad: registroGps.idUnidad,
@@ -158,17 +181,6 @@ export class TiemposTramoService {
       fechaHoraOrigen: ultimoPaso.fechaHoraPaso,
       fechaHoraDestino: registroGps.fechaHora,
       duracionSegundos,
-    },
-  });
-
-  await this.prisma.pasoParadaActual.update({
-    where: {
-      idPasoParadaActual: ultimoPaso.idPasoParadaActual,
-    },
-    data: {
-      idParada: paradaActual.idParada,
-      ordenParada: paradaActual.ordenParada,
-      fechaHoraPaso: registroGps.fechaHora,
     },
   });
 
