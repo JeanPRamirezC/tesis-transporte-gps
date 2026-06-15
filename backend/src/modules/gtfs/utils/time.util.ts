@@ -17,3 +17,13 @@ export function secondsToTimeString(seconds: number): string {
 
   return `${hh}:${mm}:${ss}`;
 }
+
+export function toTitleCase(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+

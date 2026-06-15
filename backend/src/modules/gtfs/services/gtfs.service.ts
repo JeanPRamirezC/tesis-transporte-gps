@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { GTFS_ROUTE_SCHEDULES } from '../constants/schedules.constants';
-import { timeStringToSeconds, secondsToTimeString } from '../utils/time.util';
+import { timeStringToSeconds, secondsToTimeString, toTitleCase } from '../utils/time.util';
 import AdmZip = require('adm-zip');
 
 @Injectable()
@@ -152,7 +152,7 @@ export class GtfsService {
     // --- routes.txt ---
     let routesCsv = 'route_id,agency_id,route_short_name,route_long_name,route_type\n';
     for (const ruta of rutasValidas) {
-      routesCsv += `${ruta.idRuta},coop_28,${this.escapeCsv(ruta.codigoRuta ?? '')},${this.escapeCsv(ruta.nombreRuta)},3\n`;
+      routesCsv += `${ruta.idRuta},coop_28,${this.escapeCsv(ruta.codigoRuta ?? '')},${this.escapeCsv(toTitleCase(ruta.nombreRuta))},3\n`;
     }
 
     // --- stops.txt ---
@@ -166,13 +166,14 @@ export class GtfsService {
 
     let stopsCsv = 'stop_id,stop_name,stop_lat,stop_lon\n';
     for (const parada of paradasMapeadas.values()) {
-      stopsCsv += `${parada.idParada},${this.escapeCsv(parada.nombreParada)},${parada.latitud},${parada.longitud}\n`;
+      stopsCsv += `${parada.idParada},${this.escapeCsv(toTitleCase(parada.nombreParada))},${parada.latitud},${parada.longitud}\n`;
     }
 
     // --- shapes.txt ---
     let shapesCsv = 'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n';
     for (const ruta of rutasValidas) {
       if (ruta.rutaShapes.length === 0) continue;
+      if (ruta.rutaParadas.length === 0) continue; // Evita shapes sin viajes asociados (unused_shape)
       const shapeId = `${ruta.codigoRuta}_shape`;
       for (const sh of ruta.rutaShapes) {
         shapesCsv += `${shapeId},${sh.latitud},${sh.longitud},${sh.secuencia}\n`;
@@ -208,7 +209,7 @@ export class GtfsService {
         const shapeId = ruta.rutaShapes.length > 0 ? `${schedule.codigoRuta}_shape` : '';
 
         // Escribir trip
-        tripsCsv += `${ruta.idRuta},${schedule.serviceId},${tripId},${this.escapeCsv(ruta.nombreRuta)},0,${shapeId}\n`;
+        tripsCsv += `${ruta.idRuta},${schedule.serviceId},${tripId},${this.escapeCsv(toTitleCase(ruta.nombreRuta))},0,${shapeId}\n`;
 
         // Calcular stop_times
         let segundosAcumulados = salidaSeg;
@@ -230,8 +231,8 @@ export class GtfsService {
     }
 
     // --- feed_info.txt ---
-    let feedInfoCsv = 'feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\n';
-    feedInfoCsv += 'Cooperativa 28 de Septiembre,https://example.com,es,20260101,20261231,1.0\n';
+    let feedInfoCsv = 'feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version,feed_contact_email,feed_contact_url\n';
+    feedInfoCsv += 'Cooperativa 28 de Septiembre,https://example.com,es,20260101,20261231,1.0,info@coop28septiembre.com,https://example.com\n';
 
     // 2. Empaquetar archivos en ZIP
     const zip = new AdmZip();
