@@ -6,9 +6,10 @@ import { VigitrackSchedulerService } from './services/vigitrack-scheduler.servic
 import { VigitrackService } from './services/vigitrack.service';
 import { TrayectoriasModule } from '../../trayectorias/trayectorias.module';
 import { TiemposTramoModule } from '../../tiempos-tramo/tiempos-tramo.module';
+import { EtaModule } from '../../eta/eta.module';
 
 @Module({
-  imports: [HttpModule, TrayectoriasModule, TiemposTramoModule],
+  imports: [HttpModule, TrayectoriasModule, TiemposTramoModule, EtaModule],
   controllers: [VigitrackController],
   providers: [VigitrackService, VigitrackSchedulerService],
 })

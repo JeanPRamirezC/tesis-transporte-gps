@@ -18,6 +18,18 @@ export class EtaController {
   calcularEtaPorRuta(@Param('idRuta', ParseIntPipe) idRuta: number) {
     return this.etaService.calcularEtaPorRuta(idRuta);
   }
+
+  @Get('ruta/:idRuta/persistente')
+  @ApiOperation({
+    summary: 'Obtener la última estimación ETA persistente calculada para una ruta.',
+  })
+  @ApiParam({
+    name: 'idRuta',
+    example: 7,
+  })
+  obtenerUltimoEtaPersistente(@Param('idRuta', ParseIntPipe) idRuta: number) {
+    return this.etaService.obtenerUltimoEtaPersistente(idRuta);
+  }
   @Post('ruta/:idRuta/generar')
 @ApiOperation({
   summary: 'Generar y guardar estimaciones ETA para una ruta.',

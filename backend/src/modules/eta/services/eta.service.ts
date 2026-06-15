@@ -262,38 +262,242 @@ export class EtaService {
 }
 
   async generarEstimacionesEtaPorRuta(idRuta: number) {
-  const resultadoEta = await this.calcularEtaPorRuta(idRuta);
+    const resultadoEta = await this.calcularEtaPorRuta(idRuta);
 
-  const estimacionesCreadas = [];
+    const estimacionesCreadas = [];
+    const fechaHoraCalculoComun = new Date();
 
-  for (const unidad of resultadoEta.unidades) {
-    for (const eta of unidad.etas) {
-      if (eta.etaSegundos === null) {
+    for (const unidad of resultadoEta.unidades) {
+      if (!unidad.ubicacionActual || !unidad.ubicacionActual.fechaHora) {
         continue;
       }
 
-      const estimacion = await this.prisma.estimacionEta.create({
-        data: {
+      // Buscar si ya existe una estimación previa para esta unidad y ruta
+      const ultimaEstimacion = await this.prisma.estimacionEta.findFirst({
+        where: {
           idUnidad: unidad.idUnidad,
           idRuta: resultadoEta.idRuta,
-          idParada: eta.idParada,
-          fechaHoraCalculo: new Date(),
-          tiempoEstimadoLlegada: eta.etaSegundos,
-          estadoConfiabilidad: eta.estadoConfiabilidad as EstadoConfiabilidadEta,
         },
+        orderBy: { fechaHoraCalculo: 'desc' },
+        select: { fechaHoraCalculo: true },
       });
 
-      estimacionesCreadas.push(estimacion);
+      if (ultimaEstimacion) {
+        const fechaUltimoGps = new Date(unidad.ubicacionActual.fechaHora);
+        const fechaUltimaEstimacion = new Date(ultimaEstimacion.fechaHoraCalculo);
+
+        // Si el último GPS es anterior o igual al momento del cálculo guardado anterior, omitimos duplicado
+        if (fechaUltimoGps.getTime() <= fechaUltimaEstimacion.getTime()) {
+          continue;
+        }
+      }
+
+      for (const eta of unidad.etas) {
+        if (eta.etaSegundos === null) {
+          continue;
+        }
+
+        const estimacion = await this.prisma.estimacionEta.create({
+          data: {
+            idUnidad: unidad.idUnidad,
+            idRuta: resultadoEta.idRuta,
+            idParada: eta.idParada,
+            fechaHoraCalculo: fechaHoraCalculoComun,
+            tiempoEstimadoLlegada: eta.etaSegundos,
+            estadoConfiabilidad: eta.estadoConfiabilidad as EstadoConfiabilidadEta,
+          },
+        });
+
+        estimacionesCreadas.push(estimacion);
+      }
     }
+
+    return {
+      mensaje: 'Estimaciones ETA generadas correctamente.',
+      idRuta: resultadoEta.idRuta,
+      codigoRuta: resultadoEta.codigoRuta,
+      nombreRuta: resultadoEta.nombreRuta,
+      totalEstimaciones: estimacionesCreadas.length,
+      estimaciones: estimacionesCreadas,
+    };
   }
 
-  return {
-    mensaje: 'Estimaciones ETA generadas correctamente.',
-    idRuta: resultadoEta.idRuta,
-    codigoRuta: resultadoEta.codigoRuta,
-    nombreRuta: resultadoEta.nombreRuta,
-    totalEstimaciones: estimacionesCreadas.length,
-    estimaciones: estimacionesCreadas,
-  };
-}
+  async obtenerUltimoEtaPersistente(idRuta: number) {
+    const ruta = await this.prisma.ruta.findUnique({
+      where: { idRuta },
+    });
+
+    if (!ruta) {
+      throw new NotFoundException(`No existe una ruta con id ${idRuta}`);
+    }
+
+    // 1. Obtener la última fecha de cálculo registrada para esta ruta
+    const ultimaEstimacion = await this.prisma.estimacionEta.findFirst({
+      where: { idRuta },
+      orderBy: { fechaHoraCalculo: 'desc' },
+      select: { fechaHoraCalculo: true },
+    });
+
+    if (!ultimaEstimacion) {
+      return {
+        idRuta: ruta.idRuta,
+        codigoRuta: ruta.codigoRuta,
+        nombreRuta: ruta.nombreRuta,
+        totalUnidades: 0,
+        unidades: [],
+        mensaje: 'No hay estimaciones persistidas para esta ruta.',
+      };
+    }
+
+    const fechaHoraCalculo = ultimaEstimacion.fechaHoraCalculo;
+
+    // 2. Cargar ruta_paradas para tener el orden secuencial de paradas
+    const rutaParadas = await this.prisma.rutaParada.findMany({
+      where: { idRuta },
+      include: { parada: true },
+      orderBy: { ordenParada: 'asc' },
+    });
+
+    const mapaParadasOrden = new Map<number, number>();
+    for (const rp of rutaParadas) {
+      mapaParadasOrden.set(rp.idParada, rp.ordenParada);
+    }
+
+    // 3. Traer todas las estimaciones asociadas a ese lote de cálculo
+    const estimaciones = await this.prisma.estimacionEta.findMany({
+      where: {
+        idRuta,
+        fechaHoraCalculo,
+      },
+      include: {
+        unidad: true,
+        parada: true,
+      },
+    });
+
+    // 4. Re-estructurar el resultado para agruparlo por Unidad
+    const mapaUnidades = new Map<number, any>();
+
+    for (const est of estimaciones) {
+      if (!mapaUnidades.has(est.idUnidad)) {
+        mapaUnidades.set(est.idUnidad, {
+          idUnidad: est.idUnidad,
+          codigoUnidad: est.unidad.codigoUnidad,
+          placa: est.unidad.placa,
+          ubicacionActual: null,
+          paradaActual: null,
+          estadoGeneral: est.estadoConfiabilidad,
+          etas: [],
+        });
+      }
+
+      const unidadInfo = mapaUnidades.get(est.idUnidad);
+      const ordenParada = mapaParadasOrden.get(est.idParada) ?? 0;
+
+      unidadInfo.etas.push({
+        idParada: est.idParada,
+        nombreParada: est.parada.nombreParada,
+        ordenParada: ordenParada,
+        etaSegundos: est.tiempoEstimadoLlegada,
+        etaMinutos: Math.ceil(est.tiempoEstimadoLlegada / 60),
+        estadoConfiabilidad: est.estadoConfiabilidad,
+        muestrasHistoricas: 0, // No aplica directamente en datos persistidos
+        distanciaAlBusMetros: 0, // Se calcula abajo
+        duracionTramoSegundos: 0, // No aplica directamente en datos persistidos
+        tipoCalculo: 'PERSISTIDO',
+      });
+    }
+
+    // 5. Cargar pasos actuales y últimos GPS de todas las unidades implicadas
+    const idUnidades = Array.from(mapaUnidades.keys());
+    const pasosActuales = await this.prisma.pasoParadaActual.findMany({
+      where: {
+        idRuta,
+        idUnidad: { in: idUnidades },
+      },
+      include: { parada: true },
+    });
+
+    const ahora = new Date();
+
+    for (const [idUnidad, unidadInfo] of mapaUnidades.entries()) {
+      const paso = pasosActuales.find((p) => p.idUnidad === idUnidad);
+      const ultimoGps = await this.prisma.registroGps.findFirst({
+        where: {
+          idUnidad,
+          idRuta,
+          esOperativo: true,
+        },
+        orderBy: { fechaHora: 'desc' },
+      });
+
+      if (ultimoGps) {
+        const antiguedadGpsMin = (ahora.getTime() - ultimoGps.fechaHora.getTime()) / 1000 / 60;
+        unidadInfo.ubicacionActual = {
+          latitud: Number(ultimoGps.latitud),
+          longitud: Number(ultimoGps.longitud),
+          velocidadKmh: ultimoGps.velocidad ? Number(ultimoGps.velocidad) : 0,
+          velocidadUsadaKmh: ultimoGps.velocidad ? Number(ultimoGps.velocidad) : 0,
+          fechaHora: ultimoGps.fechaHora,
+          antiguedadGpsMin: Math.round(antiguedadGpsMin),
+        };
+
+        // Enriquecer cada ETA con la distancia lineal en vivo del bus
+        for (const eta of unidadInfo.etas) {
+          const paradaDeRuta = rutaParadas.find((rp) => rp.idParada === eta.idParada);
+          if (paradaDeRuta) {
+            const distanciaAlBus = calcularDistanciaMetros(
+              Number(ultimoGps.latitud),
+              Number(ultimoGps.longitud),
+              Number(paradaDeRuta.parada.latitud),
+              Number(paradaDeRuta.parada.longitud),
+            );
+            eta.distanciaAlBusMetros = Math.round(distanciaAlBus);
+          }
+        }
+      }
+
+      if (paso) {
+        unidadInfo.paradaActual = {
+          idParada: paso.idParada,
+          nombreParada: paso.parada.nombreParada,
+          ordenParada: paso.ordenParada,
+          fechaHoraPaso: paso.fechaHoraPaso,
+        };
+      }
+
+      // Ordenar las ETAs por orden de parada secuencial
+      unidadInfo.etas.sort((a: any, b: any) => a.ordenParada - b.ordenParada);
+    }
+
+    const unidades = Array.from(mapaUnidades.values());
+
+    return {
+      idRuta: ruta.idRuta,
+      codigoRuta: ruta.codigoRuta,
+      nombreRuta: ruta.nombreRuta,
+      totalUnidades: unidades.length,
+      unidades,
+      fechaHoraCalculo,
+    };
+  }
+
+  async limpiarEstimacionesAntiguas() {
+    const limite30Dias = new Date();
+    limite30Dias.setDate(limite30Dias.getDate() - 30);
+
+    const resultado = await this.prisma.estimacionEta.deleteMany({
+      where: {
+        fechaHoraCalculo: {
+          lt: limite30Dias,
+        },
+      },
+    });
+
+    return {
+      mensaje: 'Limpieza de estimaciones antiguas completada.',
+      registrosEliminados: resultado.count,
+      limiteFecha: limite30Dias,
+    };
+  }
 }
