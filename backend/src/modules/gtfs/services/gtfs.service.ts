@@ -238,7 +238,9 @@ export class GtfsService {
     zip.addFile('agency.txt', Buffer.from(agencyCsv, 'utf-8'));
     zip.addFile('routes.txt', Buffer.from(routesCsv, 'utf-8'));
     zip.addFile('stops.txt', Buffer.from(stopsCsv, 'utf-8'));
-    zip.addFile('shapes.txt', Buffer.from(shapesCsv, 'utf-8'));
+    if (shapesCsv.trim().split('\n').length > 1) {
+      zip.addFile('shapes.txt', Buffer.from(shapesCsv, 'utf-8'));
+    }
     zip.addFile('calendar.txt', Buffer.from(calendarCsv, 'utf-8'));
     zip.addFile('trips.txt', Buffer.from(tripsCsv, 'utf-8'));
     zip.addFile('stop_times.txt', Buffer.from(stopTimesCsv, 'utf-8'));
