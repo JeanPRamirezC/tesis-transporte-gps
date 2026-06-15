@@ -59,7 +59,7 @@ export class VigitrackService {
   private async obtenerRutasDesdeProveedor(): Promise<VigitrackRuta[]> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get<VigitrackRutasResponse>(this.rutasUrl),
+        this.httpService.get<VigitrackRutasResponse>(this.rutasUrl, { timeout: 5000 }),
       );
 
       const body = response.data;
@@ -144,7 +144,7 @@ async sincronizarMonitoreo() {
 private async obtenerMonitoreoDesdeProveedor(): Promise<VigitrackMonitoreo[]> {
   try {
     const response = await firstValueFrom(
-      this.httpService.get<VigitrackMonitoreoResponse>(this.monitoreoUrl),
+      this.httpService.get<VigitrackMonitoreoResponse>(this.monitoreoUrl, { timeout: 5000 }),
     );
 
     const body = response.data;
