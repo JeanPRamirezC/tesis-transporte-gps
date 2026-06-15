@@ -1,0 +1,449 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../../database/prisma.service';
+import { calcularDistanciaMetros } from '../../../common/utils/geo.util';
+
+export interface PasoItinerario {
+  tipo: 'WALK' | 'TRANSIT';
+  descripcion: string;
+  distanciaMetros: number;
+  tiempoSegundos: number;
+  tiempoMinutos: number;
+  origen?: { lat: number; lon: number; nombre: string };
+  destino?: { lat: number; lon: number; nombre: string };
+  idRuta?: number;
+  codigoRuta?: string | null;
+  nombreRuta?: string;
+  paradaOrigen?: string;
+  paradaDestino?: string;
+  cantidadParadas?: number;
+}
+
+export interface Itinerario {
+  tipo: 'DIRECT_WALK' | 'DIRECT_TRANSIT' | 'TRANSFER_TRANSIT';
+  tiempoTotalSegundos: number;
+  tiempoTotalMinutos: number;
+  distanciaTotalCaminataMetros: number;
+  transbordos: number;
+  pasos: PasoItinerario[];
+}
+
+@Injectable()
+export class PlanificadorService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private calcularTiempoRuta(
+    ruta: any,
+    idxOrigen: number,
+    idxDestino: number,
+    mapaPromedios: Map<string, number>,
+  ): number {
+    let segundos = 0;
+    for (let i = idxOrigen; i < idxDestino; i++) {
+      const o = ruta.rutaParadas[i].parada;
+      const d = ruta.rutaParadas[i + 1].parada;
+      const clave = `${ruta.idRuta}-${o.idParada}-${d.idParada}`;
+      if (mapaPromedios.has(clave)) {
+        segundos += mapaPromedios.get(clave)!;
+      } else {
+        // Fallback geográfico a 18 km/h (5 m/s)
+        const dist = calcularDistanciaMetros(
+          Number(o.latitud),
+          Number(o.longitud),
+          Number(d.latitud),
+          Number(d.longitud),
+        );
+        segundos += Math.round(dist / 5.0);
+      }
+    }
+    return segundos;
+  }
+
+  async planificarViaje(
+    origenLat: number,
+    origenLon: number,
+    destinoLat: number,
+    destinoLon: number,
+    maxCaminataMetros: number = 800,
+  ): Promise<Itinerario[]> {
+    const VELOCIDAD_CAMINATA_MPS = 1.39; // 5 km/h
+    const TIEMPO_ESPERA_ESTIMADO_SEG = 240; // 4 minutos de espera en parada
+
+    // 1. Obtener todas las rutas y paradas activas
+    const rutas = await this.prisma.ruta.findMany({
+      where: { estado: 'ACTIVA' },
+      include: {
+        rutaParadas: {
+          include: { parada: true },
+          orderBy: { ordenParada: 'asc' },
+        },
+      },
+    });
+
+    const paradas = await this.prisma.parada.findMany({
+      where: { estado: 'ACTIVA' },
+    });
+
+    // 2. Obtener promedios de tiempo entre tramos de base de datos
+    const promedios = await this.prisma.tiempoTramo.groupBy({
+      by: ['idRuta', 'idParadaOrigen', 'idParadaDestino'],
+      _avg: { duracionSegundos: true },
+    });
+
+    const mapaPromedios = new Map<string, number>();
+    for (const p of promedios) {
+      const clave = `${p.idRuta}-${p.idParadaOrigen}-${p.idParadaDestino}`;
+      mapaPromedios.set(clave, Math.round(p._avg.duracionSegundos ?? 0));
+    }
+
+    const itinerarios: Itinerario[] = [];
+
+    // 3. Opción de caminata directa
+    const distCaminataDirecta = calcularDistanciaMetros(
+      origenLat,
+      origenLon,
+      destinoLat,
+      destinoLon,
+    );
+    const tiempoCaminataDirectaSeg = Math.round(
+      distCaminataDirecta / VELOCIDAD_CAMINATA_MPS,
+    );
+
+    // Siempre agregamos la opción de caminata directa si es menor a 2.5 km
+    if (distCaminataDirecta <= 2500) {
+      itinerarios.push({
+        tipo: 'DIRECT_WALK',
+        tiempoTotalSegundos: tiempoCaminataDirectaSeg,
+        tiempoTotalMinutos: Math.ceil(tiempoCaminataDirectaSeg / 60),
+        distanciaTotalCaminataMetros: Math.round(distCaminataDirecta),
+        transbordos: 0,
+        pasos: [
+          {
+            tipo: 'WALK',
+            descripcion: 'Caminar directamente al destino',
+            distanciaMetros: Math.round(distCaminataDirecta),
+            tiempoSegundos: tiempoCaminataDirectaSeg,
+            tiempoMinutos: Math.ceil(tiempoCaminataDirectaSeg / 60),
+            origen: { lat: origenLat, lon: origenLon, nombre: 'Mi ubicación' },
+            destino: { lat: destinoLat, lon: destinoLon, nombre: 'Destino' },
+          },
+        ],
+      });
+    }
+
+    // 4. Encontrar paradas cercanas al origen y al destino
+    const paradasOrigen = paradas
+      .map((p) => ({
+        parada: p,
+        distancia: calcularDistanciaMetros(
+          origenLat,
+          origenLon,
+          Number(p.latitud),
+          Number(p.longitud),
+        ),
+      }))
+      .filter((item) => item.distancia <= maxCaminataMetros);
+
+    const paradasDestino = paradas
+      .map((p) => ({
+        parada: p,
+        distancia: calcularDistanciaMetros(
+          destinoLat,
+          destinoLon,
+          Number(p.latitud),
+          Number(p.longitud),
+        ),
+      }))
+      .filter((item) => item.distancia <= maxCaminataMetros);
+
+    // 5. RUTAS DIRECTAS (0 Transbordos)
+    for (const po of paradasOrigen) {
+      for (const pd of paradasDestino) {
+        if (po.parada.idParada === pd.parada.idParada) continue;
+
+        for (const ruta of rutas) {
+          const idxOrigen = ruta.rutaParadas.findIndex(
+            (rp) => rp.idParada === po.parada.idParada,
+          );
+          const idxDestino = ruta.rutaParadas.findIndex(
+            (rp) => rp.idParada === pd.parada.idParada,
+          );
+
+          if (
+            idxOrigen !== -1 &&
+            idxDestino !== -1 &&
+            idxOrigen < idxDestino
+          ) {
+            const tiempoWalk1 = po.distancia / VELOCIDAD_CAMINATA_MPS;
+            const tiempoViajeBus = this.calcularTiempoRuta(
+              ruta,
+              idxOrigen,
+              idxDestino,
+              mapaPromedios,
+            );
+            const tiempoWalk2 = pd.distancia / VELOCIDAD_CAMINATA_MPS;
+            const tiempoTotal =
+              tiempoWalk1 +
+              tiempoViajeBus +
+              tiempoWalk2 +
+              TIEMPO_ESPERA_ESTIMADO_SEG;
+
+            itinerarios.push({
+              tipo: 'DIRECT_TRANSIT',
+              tiempoTotalSegundos: Math.round(tiempoTotal),
+              tiempoTotalMinutos: Math.ceil(tiempoTotal / 60),
+              distanciaTotalCaminataMetros: Math.round(
+                po.distancia + pd.distancia,
+              ),
+              transbordos: 0,
+              pasos: [
+                {
+                  tipo: 'WALK',
+                  descripcion: `Caminar hasta la parada ${toTitleCase(po.parada.nombreParada)}`,
+                  distanciaMetros: Math.round(po.distancia),
+                  tiempoSegundos: Math.round(tiempoWalk1),
+                  tiempoMinutos: Math.ceil(tiempoWalk1 / 60),
+                  origen: { lat: origenLat, lon: origenLon, nombre: 'Mi ubicación' },
+                  destino: {
+                    lat: Number(po.parada.latitud),
+                    lon: Number(po.parada.longitud),
+                    nombre: toTitleCase(po.parada.nombreParada),
+                  },
+                },
+                {
+                  tipo: 'TRANSIT',
+                  descripcion: `Tomar autobús de la línea ${toTitleCase(ruta.nombreRuta)} (${ruta.codigoRuta})`,
+                  distanciaMetros: 0, // No aplica directamente
+                  tiempoSegundos: Math.round(tiempoViajeBus),
+                  tiempoMinutos: Math.ceil(tiempoViajeBus / 60),
+                  idRuta: ruta.idRuta,
+                  codigoRuta: ruta.codigoRuta,
+                  nombreRuta: toTitleCase(ruta.nombreRuta),
+                  paradaOrigen: toTitleCase(po.parada.nombreParada),
+                  paradaDestino: toTitleCase(pd.parada.nombreParada),
+                  cantidadParadas: idxDestino - idxOrigen,
+                },
+                {
+                  tipo: 'WALK',
+                  descripcion: `Caminar desde la parada ${toTitleCase(pd.parada.nombreParada)} hasta el destino`,
+                  distanciaMetros: Math.round(pd.distancia),
+                  tiempoSegundos: Math.round(tiempoWalk2),
+                  tiempoMinutos: Math.ceil(tiempoWalk2 / 60),
+                  origen: {
+                    lat: Number(pd.parada.latitud),
+                    lon: Number(pd.parada.longitud),
+                    nombre: toTitleCase(pd.parada.nombreParada),
+                  },
+                  destino: { lat: destinoLat, lon: destinoLon, nombre: 'Destino' },
+                },
+              ],
+            });
+          }
+        }
+      }
+    }
+
+    // 6. RUTAS CON CONEXIÓN (1 Transbordo)
+    const MAX_DISTANCIA_TRANSBORDO_METROS = 250;
+
+    for (const po of paradasOrigen) {
+      for (const pd of paradasDestino) {
+        if (po.parada.idParada === pd.parada.idParada) continue;
+
+        // Rutas que pasan por la parada de origen
+        const rutasO = rutas.filter((r) =>
+          r.rutaParadas.some((rp) => rp.idParada === po.parada.idParada),
+        );
+        // Rutas que pasan por la parada de destino
+        const rutasD = rutas.filter((r) =>
+          r.rutaParadas.some((rp) => rp.idParada === pd.parada.idParada),
+        );
+
+        for (const r1 of rutasO) {
+          for (const r2 of rutasD) {
+            if (r1.idRuta === r2.idRuta) continue; // Conexión directa, ya procesada
+
+            const idxO_r1 = r1.rutaParadas.findIndex(
+              (rp) => rp.idParada === po.parada.idParada,
+            );
+            const idxD_r2 = r2.rutaParadas.findIndex(
+              (rp) => rp.idParada === pd.parada.idParada,
+            );
+
+            // Buscar paradas de transferencia viables
+            for (let i = idxO_r1 + 1; i < r1.rutaParadas.length; i++) {
+              const pt1 = r1.rutaParadas[i].parada;
+
+              for (let j = 0; j < idxD_r2; j++) {
+                const pt2 = r2.rutaParadas[j].parada;
+
+                const distTransfer = calcularDistanciaMetros(
+                  Number(pt1.latitud),
+                  Number(pt1.longitud),
+                  Number(pt2.latitud),
+                  Number(pt2.longitud),
+                );
+
+                if (distTransfer <= MAX_DISTANCIA_TRANSBORDO_METROS) {
+                  // Conexión válida encontrada!
+                  const tiempoWalk1 = po.distancia / VELOCIDAD_CAMINATA_MPS;
+                  const tiempoBus1 = this.calcularTiempoRuta(
+                    r1,
+                    idxO_r1,
+                    i,
+                    mapaPromedios,
+                  );
+                  const tiempoWalkTransfer = distTransfer / VELOCIDAD_CAMINATA_MPS;
+                  const tiempoBus2 = this.calcularTiempoRuta(
+                    r2,
+                    j,
+                    idxD_r2,
+                    mapaPromedios,
+                  );
+                  const tiempoWalk2 = pd.distancia / VELOCIDAD_CAMINATA_MPS;
+
+                  // Sumamos dos tiempos de espera estimado en parada (por los dos buses)
+                  const tiempoTotal =
+                    tiempoWalk1 +
+                    tiempoBus1 +
+                    tiempoWalkTransfer +
+                    tiempoBus2 +
+                    tiempoWalk2 +
+                    (TIEMPO_ESPERA_ESTIMADO_SEG * 2);
+
+                  itinerarios.push({
+                    tipo: 'TRANSFER_TRANSIT',
+                    tiempoTotalSegundos: Math.round(tiempoTotal),
+                    tiempoTotalMinutos: Math.ceil(tiempoTotal / 60),
+                    distanciaTotalCaminataMetros: Math.round(
+                      po.distancia + distTransfer + pd.distancia,
+                    ),
+                    transbordos: 1,
+                    pasos: [
+                      {
+                        tipo: 'WALK',
+                        descripcion: `Caminar hasta la parada ${toTitleCase(po.parada.nombreParada)}`,
+                        distanciaMetros: Math.round(po.distancia),
+                        tiempoSegundos: Math.round(tiempoWalk1),
+                        tiempoMinutos: Math.ceil(tiempoWalk1 / 60),
+                        origen: { lat: origenLat, lon: origenLon, nombre: 'Mi ubicación' },
+                        destino: {
+                          lat: Number(po.parada.latitud),
+                          lon: Number(po.parada.longitud),
+                          nombre: toTitleCase(po.parada.nombreParada),
+                        },
+                      },
+                      {
+                        tipo: 'TRANSIT',
+                        descripcion: `Tomar autobús de la línea ${toTitleCase(r1.nombreRuta)} (${r1.codigoRuta})`,
+                        distanciaMetros: 0,
+                        tiempoSegundos: Math.round(tiempoBus1),
+                        tiempoMinutos: Math.ceil(tiempoBus1 / 60),
+                        idRuta: r1.idRuta,
+                        codigoRuta: r1.codigoRuta,
+                        nombreRuta: toTitleCase(r1.nombreRuta),
+                        paradaOrigen: toTitleCase(po.parada.nombreParada),
+                        paradaDestino: toTitleCase(pt1.nombreParada),
+                        cantidadParadas: i - idxO_r1,
+                      },
+                      {
+                        tipo: 'WALK',
+                        descripcion: distTransfer > 0 
+                          ? `Caminar hacia la parada ${toTitleCase(pt2.nombreParada)} para transbordo`
+                          : `Realizar transbordo en la misma parada`,
+                        distanciaMetros: Math.round(distTransfer),
+                        tiempoSegundos: Math.round(tiempoWalkTransfer),
+                        tiempoMinutos: Math.ceil(tiempoWalkTransfer / 60),
+                        origen: {
+                          lat: Number(pt1.latitud),
+                          lon: Number(pt1.longitud),
+                          nombre: toTitleCase(pt1.nombreParada),
+                        },
+                        destino: {
+                          lat: Number(pt2.latitud),
+                          lon: Number(pt2.longitud),
+                          nombre: toTitleCase(pt2.nombreParada),
+                        },
+                      },
+                      {
+                        tipo: 'TRANSIT',
+                        descripcion: `Tomar autobús de la línea ${toTitleCase(r2.nombreRuta)} (${r2.codigoRuta})`,
+                        distanciaMetros: 0,
+                        tiempoSegundos: Math.round(tiempoBus2),
+                        tiempoMinutos: Math.ceil(tiempoBus2 / 60),
+                        idRuta: r2.idRuta,
+                        codigoRuta: r2.codigoRuta,
+                        nombreRuta: toTitleCase(r2.nombreRuta),
+                        paradaOrigen: toTitleCase(pt2.nombreParada),
+                        paradaDestino: toTitleCase(pd.parada.nombreParada),
+                        cantidadParadas: idxD_r2 - j,
+                      },
+                      {
+                        tipo: 'WALK',
+                        descripcion: `Caminar desde la parada ${toTitleCase(pd.parada.nombreParada)} hasta el destino`,
+                        distanciaMetros: Math.round(pd.distancia),
+                        tiempoSegundos: Math.round(tiempoWalk2),
+                        tiempoMinutos: Math.ceil(tiempoWalk2 / 60),
+                        origen: {
+                          lat: Number(pd.parada.latitud),
+                          lon: Number(pd.parada.longitud),
+                          nombre: toTitleCase(pd.parada.nombreParada),
+                        },
+                        destino: { lat: destinoLat, lon: destinoLon, nombre: 'Destino' },
+                      },
+                    ],
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 7. Filtrar duplicados y ordenar por tiempo total
+    // Limitar los resultados a máximo 5 itinerarios óptimos y únicos
+    const itinerariosUnicos = this.eliminarItinerariosDuplicados(itinerarios);
+
+    return itinerariosUnicos
+      .sort((a, b) => {
+        if (a.transbordos !== b.transbordos) {
+          return a.transbordos - b.transbordos; // Menos transbordos primero
+        }
+        return a.tiempoTotalSegundos - b.tiempoTotalSegundos; // Más rápido después
+      })
+      .slice(0, 5);
+  }
+
+  private eliminarItinerariosDuplicados(itinerarios: Itinerario[]): Itinerario[] {
+    const mapaItinerarios = new Map<string, Itinerario>();
+
+    for (const iti of itinerarios) {
+      // Crear una firma única basada en los pasos del viaje
+      const firmasPasos = iti.pasos
+        .map((p) => {
+          if (p.tipo === 'TRANSIT') {
+            return `TRANSIT-${p.codigoRuta}-${p.paradaOrigen}-${p.paradaDestino}`;
+          }
+          return `WALK-${p.distanciaMetros}`;
+        })
+        .join('|');
+
+      const existente = mapaItinerarios.get(firmasPasos);
+      if (!existente || existente.tiempoTotalSegundos > iti.tiempoTotalSegundos) {
+        mapaItinerarios.set(firmasPasos, iti);
+      }
+    }
+
+    return Array.from(mapaItinerarios.values());
+  }
+}
+
+// Función auxiliar para formatear a Title Case
+function toTitleCase(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}

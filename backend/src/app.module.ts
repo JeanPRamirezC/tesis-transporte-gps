@@ -13,6 +13,7 @@ import { TiemposTramoModule } from './modules/tiempos-tramo/tiempos-tramo.module
 import { EtaModule } from './modules/eta/eta.module';
 import { MapaModule } from './modules/mapa/mapa.module';
 import { GtfsModule } from './modules/gtfs/gtfs.module';
+import { PlanificadorModule } from './modules/planificador/planificador.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { GtfsModule } from './modules/gtfs/gtfs.module';
     EtaModule,
     MapaModule,
     GtfsModule,
+    PlanificadorModule,
   ],
 })
 export class AppModule {}
