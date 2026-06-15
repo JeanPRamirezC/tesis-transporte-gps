@@ -12,6 +12,7 @@ import { TrayectoriasModule } from './modules/trayectorias/trayectorias.module';
 import { TiemposTramoModule } from './modules/tiempos-tramo/tiempos-tramo.module';
 import { EtaModule } from './modules/eta/eta.module';
 import { MapaModule } from './modules/mapa/mapa.module';
+import { GtfsModule } from './modules/gtfs/gtfs.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { MapaModule } from './modules/mapa/mapa.module';
     TiemposTramoModule,
     EtaModule,
     MapaModule,
+    GtfsModule,
   ],
 })
 export class AppModule {}

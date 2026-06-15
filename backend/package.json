@@ -19,7 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "railway:build": "npx prisma generate && npm run build",
-"railway:start": "npx prisma migrate deploy && node dist/src/main.js"
+    "railway:start": "npx prisma migrate deploy && node dist/src/main.js"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
@@ -32,6 +32,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/pg": "^8.20.0",
+    "adm-zip": "^0.5.17",
     "axios": "^1.16.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -47,6 +48,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@types/adm-zip": "^0.5.8",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
