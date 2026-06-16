@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { calcularDistanciaMetros } from '../../../common/utils/geo.util';
+import { EtaService } from '../../eta/services/eta.service';
 
 export interface PasoItinerario {
   tipo: 'WALK' | 'TRANSIT';
@@ -17,6 +18,12 @@ export interface PasoItinerario {
   paradaDestino?: string;
   cantidadParadas?: number;
   shape?: { lat: number; lng: number }[];
+  tiempoEsperaSegundos?: number;
+  tiempoEsperaMinutos?: number;
+  tiempoViajeSegundos?: number;
+  tiempoViajeMinutos?: number;
+  busActivo?: boolean;
+  codigoBus?: string | null;
 }
 
 export interface Itinerario {
@@ -30,7 +37,10 @@ export interface Itinerario {
 
 @Injectable()
 export class PlanificadorService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly etaService: EtaService,
+  ) {}
 
   private calcularTiempoRuta(
     ruta: any,
@@ -154,6 +164,20 @@ export class PlanificadorService {
       mapaPromedios.set(clave, Math.round(p._avg.duracionSegundos ?? 0));
     }
 
+    const mapaEtasRutas = new Map<number, any>();
+    const getEtasRuta = async (idRuta: number) => {
+      if (mapaEtasRutas.has(idRuta)) {
+        return mapaEtasRutas.get(idRuta);
+      }
+      try {
+        const res = await this.etaService.calcularEtaPorRuta(idRuta);
+        mapaEtasRutas.set(idRuta, res);
+        return res;
+      } catch (err) {
+        return null;
+      }
+    };
+
     const itinerarios: Itinerario[] = [];
 
     // 3. Opción de caminata directa
@@ -232,6 +256,33 @@ export class PlanificadorService {
               ? (idxDestino - idxOrigen)
               : (ruta.rutaParadas.length - idxOrigen + idxDestino);
 
+            // Calcular ETA en tiempo real o fallback
+            const etasRuta = await getEtasRuta(ruta.idRuta);
+            let tiempoEsperaSegundos = 300; // Fallback 5 minutos
+            let busActivo = false;
+            let codigoBus: string | null = null;
+
+            if (etasRuta && etasRuta.unidades && etasRuta.unidades.length > 0) {
+              let minEta = Infinity;
+              let bestUnit = null;
+
+              for (const u of etasRuta.unidades) {
+                const etaItem = u.etas.find((e: any) => e.idParada === po.parada.idParada);
+                if (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) {
+                  if (etaItem.etaSegundos < minEta) {
+                    minEta = etaItem.etaSegundos;
+                    bestUnit = u;
+                  }
+                }
+              }
+
+              if (bestUnit && minEta !== Infinity) {
+                tiempoEsperaSegundos = minEta;
+                busActivo = true;
+                codigoBus = bestUnit.codigoUnidad;
+              }
+            }
+
             const tiempoWalk1 = po.distancia / VELOCIDAD_CAMINATA_MPS;
             const tiempoViajeBus = this.calcularTiempoRuta(
               ruta,
@@ -244,7 +295,7 @@ export class PlanificadorService {
               tiempoWalk1 +
               tiempoViajeBus +
               tiempoWalk2 +
-              TIEMPO_ESPERA_ESTIMADO_SEG;
+              tiempoEsperaSegundos;
 
             itinerarios.push({
               tipo: 'DIRECT_TRANSIT',
@@ -272,8 +323,8 @@ export class PlanificadorService {
                   tipo: 'TRANSIT',
                   descripcion: `Tomar autobús de la línea ${toTitleCase(ruta.nombreRuta)} (${ruta.codigoRuta})`,
                   distanciaMetros: 0,
-                  tiempoSegundos: Math.round(tiempoViajeBus),
-                  tiempoMinutos: Math.ceil(tiempoViajeBus / 60),
+                  tiempoSegundos: Math.round(tiempoEsperaSegundos + tiempoViajeBus),
+                  tiempoMinutos: Math.ceil((tiempoEsperaSegundos + tiempoViajeBus) / 60),
                   idRuta: ruta.idRuta,
                   codigoRuta: ruta.codigoRuta,
                   nombreRuta: toTitleCase(ruta.nombreRuta),
@@ -290,6 +341,12 @@ export class PlanificadorService {
                     lon: Number(pd.parada.longitud),
                     nombre: toTitleCase(pd.parada.nombreParada),
                   },
+                  tiempoEsperaSegundos: Math.round(tiempoEsperaSegundos),
+                  tiempoEsperaMinutos: Math.ceil(tiempoEsperaSegundos / 60),
+                  tiempoViajeSegundos: Math.round(tiempoViajeBus),
+                  tiempoViajeMinutos: Math.ceil(tiempoViajeBus / 60),
+                  busActivo,
+                  codigoBus,
                 },
                 {
                   tipo: 'WALK',
@@ -363,6 +420,60 @@ export class PlanificadorService {
                       ? (idxD_r2 - j)
                       : (r2.rutaParadas.length - j + idxD_r2);
 
+                    // Calcular ETA en tiempo real o fallback para R1
+                    const etasR1 = await getEtasRuta(r1.idRuta);
+                    let tiempoEsperaR1 = 300; // Fallback 5 min
+                    let busActivoR1 = false;
+                    let codigoBusR1: string | null = null;
+
+                    if (etasR1 && etasR1.unidades && etasR1.unidades.length > 0) {
+                      let minEta = Infinity;
+                      let bestUnit = null;
+
+                      for (const u of etasR1.unidades) {
+                        const etaItem = u.etas.find((e: any) => e.idParada === po.parada.idParada);
+                        if (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) {
+                          if (etaItem.etaSegundos < minEta) {
+                            minEta = etaItem.etaSegundos;
+                            bestUnit = u;
+                          }
+                        }
+                      }
+
+                      if (bestUnit && minEta !== Infinity) {
+                        tiempoEsperaR1 = minEta;
+                        busActivoR1 = true;
+                        codigoBusR1 = bestUnit.codigoUnidad;
+                      }
+                    }
+
+                    // Calcular ETA en tiempo real o fallback para R2
+                    const etasR2 = await getEtasRuta(r2.idRuta);
+                    let tiempoEsperaR2 = 300; // Fallback 5 min
+                    let busActivoR2 = false;
+                    let codigoBusR2: string | null = null;
+
+                    if (etasR2 && etasR2.unidades && etasR2.unidades.length > 0) {
+                      let minEta = Infinity;
+                      let bestUnit = null;
+
+                      for (const u of etasR2.unidades) {
+                        const etaItem = u.etas.find((e: any) => e.idParada === pt2.idParada);
+                        if (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) {
+                          if (etaItem.etaSegundos < minEta) {
+                            minEta = etaItem.etaSegundos;
+                            bestUnit = u;
+                          }
+                        }
+                      }
+
+                      if (bestUnit && minEta !== Infinity) {
+                        tiempoEsperaR2 = minEta;
+                        busActivoR2 = true;
+                        codigoBusR2 = bestUnit.codigoUnidad;
+                      }
+                    }
+
                     const tiempoWalk1 = po.distancia / VELOCIDAD_CAMINATA_MPS;
                     const tiempoBus1 = this.calcularTiempoRuta(
                       r1,
@@ -381,11 +492,10 @@ export class PlanificadorService {
 
                     const tiempoTotal =
                       tiempoWalk1 +
-                      tiempoBus1 +
+                      (tiempoEsperaR1 + tiempoBus1) +
                       tiempoWalkTransfer +
-                      tiempoBus2 +
-                      tiempoWalk2 +
-                      (TIEMPO_ESPERA_ESTIMADO_SEG * 2);
+                      (tiempoEsperaR2 + tiempoBus2) +
+                      tiempoWalk2;
 
                     itinerarios.push({
                       tipo: 'TRANSFER_TRANSIT',
@@ -413,8 +523,8 @@ export class PlanificadorService {
                           tipo: 'TRANSIT',
                           descripcion: `Tomar autobús de la línea ${toTitleCase(r1.nombreRuta)} (${r1.codigoRuta})`,
                           distanciaMetros: 0,
-                          tiempoSegundos: Math.round(tiempoBus1),
-                          tiempoMinutos: Math.ceil(tiempoBus1 / 60),
+                          tiempoSegundos: Math.round(tiempoEsperaR1 + tiempoBus1),
+                          tiempoMinutos: Math.ceil((tiempoEsperaR1 + tiempoBus1) / 60),
                           idRuta: r1.idRuta,
                           codigoRuta: r1.codigoRuta,
                           nombreRuta: toTitleCase(r1.nombreRuta),
@@ -431,6 +541,12 @@ export class PlanificadorService {
                             lon: Number(pt1.longitud),
                             nombre: toTitleCase(pt1.nombreParada),
                           },
+                          tiempoEsperaSegundos: Math.round(tiempoEsperaR1),
+                          tiempoEsperaMinutos: Math.ceil(tiempoEsperaR1 / 60),
+                          tiempoViajeSegundos: Math.round(tiempoBus1),
+                          tiempoViajeMinutos: Math.ceil(tiempoBus1 / 60),
+                          busActivo: busActivoR1,
+                          codigoBus: codigoBusR1,
                         },
                         {
                           tipo: 'WALK',
@@ -455,8 +571,8 @@ export class PlanificadorService {
                           tipo: 'TRANSIT',
                           descripcion: `Tomar autobús de la línea ${toTitleCase(r2.nombreRuta)} (${r2.codigoRuta})`,
                           distanciaMetros: 0,
-                          tiempoSegundos: Math.round(tiempoBus2),
-                          tiempoMinutos: Math.ceil(tiempoBus2 / 60),
+                          tiempoSegundos: Math.round(tiempoEsperaR2 + tiempoBus2),
+                          tiempoMinutos: Math.ceil((tiempoEsperaR2 + tiempoBus2) / 60),
                           idRuta: r2.idRuta,
                           codigoRuta: r2.codigoRuta,
                           nombreRuta: toTitleCase(r2.nombreRuta),
@@ -473,6 +589,12 @@ export class PlanificadorService {
                             lon: Number(pd.parada.longitud),
                             nombre: toTitleCase(pd.parada.nombreParada),
                           },
+                          tiempoEsperaSegundos: Math.round(tiempoEsperaR2),
+                          tiempoEsperaMinutos: Math.ceil(tiempoEsperaR2 / 60),
+                          tiempoViajeSegundos: Math.round(tiempoBus2),
+                          tiempoViajeMinutos: Math.ceil(tiempoBus2 / 60),
+                          busActivo: busActivoR2,
+                          codigoBus: codigoBusR2,
                         },
                         {
                           tipo: 'WALK',

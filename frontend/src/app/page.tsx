@@ -54,6 +54,12 @@ type Itinerario = {
     paradaOrigen?: string;
     paradaDestino?: string;
     cantidadParadas?: number;
+    tiempoEsperaSegundos?: number;
+    tiempoEsperaMinutos?: number;
+    tiempoViajeSegundos?: number;
+    tiempoViajeMinutos?: number;
+    busActivo?: boolean;
+    codigoBus?: string | null;
   }[];
 };
 
@@ -564,9 +570,38 @@ export default function HomePage() {
                                   </div>
                                   <div className="flex-1">
                                     <p className="font-medium text-zinc-800 dark:text-zinc-200">{paso.descripcion}</p>
-                                    <p className="text-[10px] text-zinc-400">
-                                      {paso.distanciaMetros > 0 && `${paso.distanciaMetros}m • `}{paso.tiempoMinutos} min
-                                    </p>
+                                    {paso.tipo === 'TRANSIT' ? (
+                                      <div className="mt-1 space-y-0.5 text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">
+                                        <p className="flex items-center gap-1">
+                                          <span>⏱️</span>
+                                          <span>
+                                            Espera: <strong>{paso.tiempoEsperaMinutos} min</strong>
+                                            {paso.busActivo ? (
+                                              <span className="text-emerald-600 dark:text-emerald-400 ml-1">
+                                                (Bus {paso.codigoBus} en camino)
+                                              </span>
+                                            ) : (
+                                              <span className="text-zinc-400 dark:text-zinc-500 ml-1">
+                                                (Sin buses en vivo)
+                                              </span>
+                                            )}
+                                          </span>
+                                        </p>
+                                        <p className="flex items-center gap-1">
+                                          <span>🚌</span>
+                                          <span>
+                                            Viaje: <strong>{paso.tiempoViajeMinutos} min</strong> ({paso.cantidadParadas} paradas)
+                                          </span>
+                                        </p>
+                                        <p className="text-[9px] text-zinc-400 dark:text-zinc-500 pt-0.5 italic">
+                                          Total tramo: {paso.tiempoMinutos} min
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <p className="text-[10px] text-zinc-400">
+                                        {paso.distanciaMetros > 0 && `${paso.distanciaMetros}m • `}{paso.tiempoMinutos} min
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
                               ))}
