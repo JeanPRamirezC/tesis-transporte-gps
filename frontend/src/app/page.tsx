@@ -147,6 +147,15 @@ export default function HomePage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (activeTab === 'planificador') {
+      setSelectedRouteData(null);
+    } else if (activeTab === 'rutas') {
+      setItinerarios([]);
+      setItinerarioSeleccionado(null);
+    }
+  }, [activeTab]);
+
   const fetchRutas = async () => {
     try {
       setCargandoRutas(true);
@@ -240,6 +249,7 @@ export default function HomePage() {
     setPlannerError(null);
     setItinerarios([]);
     setItinerarioSeleccionado(null);
+    setSelectedRouteData(null);
 
     if (!origenLat || !origenLon || !destinoLat || !destinoLon) {
       setPlannerError('Por favor establece los puntos de origen y destino.');
@@ -307,6 +317,7 @@ export default function HomePage() {
     setItinerarios([]);
     setItinerarioSeleccionado(null);
     setPlannerError(null);
+    setSelectedRouteData(null);
   };
 
   const getTextoIncidente = (tipo: string) => {

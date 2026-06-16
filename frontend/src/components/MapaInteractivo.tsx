@@ -89,6 +89,37 @@ export function MapaInteractivo({
 
   const [activeUnit, setActiveUnit] = useState<Unidad | null>(null);
   const [activeIncidente, setActiveIncidente] = useState<Incidente | null>(null);
+  const [walkingPaths, setWalkingPaths] = useState<Record<number, google.maps.LatLng[]>>({});
+
+  React.useEffect(() => {
+    if (typeof google === 'undefined' || !isLoaded || !itinerarioActivoPasos || itinerarioActivoPasos.length === 0) {
+      setWalkingPaths({});
+      return;
+    }
+
+    const service = new google.maps.DirectionsService();
+
+    itinerarioActivoPasos.forEach((paso, index) => {
+      if (paso.tipo === 'WALK' && paso.origen && paso.destino) {
+        service.route(
+          {
+            origin: { lat: paso.origen.lat, lng: paso.origen.lon },
+            destination: { lat: paso.destino.lat, lng: paso.destino.lon },
+            travelMode: google.maps.TravelMode.WALKING,
+          },
+          (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK && result) {
+              const path = result.routes[0].overview_path;
+              setWalkingPaths((prev) => ({
+                ...prev,
+                [index]: path,
+              }));
+            }
+          }
+        );
+      }
+    });
+  }, [itinerarioActivoPasos, isLoaded]);
 
   if (!isLoaded) {
     return (
@@ -202,14 +233,18 @@ export function MapaInteractivo({
         {itinerarioActivoPasos && itinerarioActivoPasos.length > 0 && (
           itinerarioActivoPasos.map((paso, index) => {
             if (paso.tipo === 'WALK' && paso.origen && paso.destino) {
-              // Draw walk path
+              // Draw walk path using Directions path if loaded, else straight fallback
+              const pathPoints = walkingPaths[index]
+                ? walkingPaths[index]
+                : [
+                    { lat: paso.origen.lat, lng: paso.origen.lon },
+                    { lat: paso.destino.lat, lng: paso.destino.lon }
+                  ];
+
               return (
                 <Polyline
                   key={`${plannerKeyPrefix}-walk-${index}`}
-                  path={[
-                    { lat: paso.origen.lat, lng: paso.origen.lon },
-                    { lat: paso.destino.lat, lng: paso.destino.lon }
-                  ]}
+                  path={pathPoints}
                   options={{
                     strokeColor: '#71717a',
                     strokeOpacity: 0.6,
@@ -245,7 +280,7 @@ export function MapaInteractivo({
                   key={`${plannerKeyPrefix}-transit-${index}`}
                   path={pathPoints}
                   options={{
-                    strokeColor: '#3b82f6',
+                    strokeColor: '#8b5cf6', // Violet polyline to avoid conflict
                     strokeOpacity: 0.9,
                     strokeWeight: 6,
                     icons: [
@@ -253,7 +288,7 @@ export function MapaInteractivo({
                         icon: {
                           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                           scale: 2.5,
-                          strokeColor: '#1d4ed8',
+                          strokeColor: '#6d28d9', // Dark violet arrows
                         },
                         offset: '0%',
                         repeat: '60px',
@@ -334,6 +369,54 @@ export function MapaInteractivo({
             }}
           />
         ))}
+
+        {/* Boarding/Deboarding stops markers and permanently open InfoWindows for the planner */}
+        {itinerarioActivoPasos && itinerarioActivoPasos.length > 0 && (
+          itinerarioActivoPasos.map((paso, index) => {
+            if (paso.tipo === 'TRANSIT' && paso.origen && paso.destino) {
+              return (
+                <React.Fragment key={`planner-stop-details-${index}`}>
+                  {/* Boarding Stop */}
+                  <Marker
+                    position={{ lat: paso.origen.lat, lng: paso.origen.lon }}
+                    title={`Parada de abordaje: ${paso.origen.nombre}`}
+                    icon={{
+                      url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                      scaledSize: new google.maps.Size(28, 28),
+                    }}
+                  />
+                  <InfoWindow
+                    position={{ lat: paso.origen.lat, lng: paso.origen.lon }}
+                    options={{ disableAutoPan: true }}
+                  >
+                    <div className="p-1 text-zinc-950 font-sans text-[10px] font-bold">
+                      🚏 Subir: {paso.origen.nombre} ({paso.codigoRuta || 'Bus'})
+                    </div>
+                  </InfoWindow>
+
+                  {/* Deboarding Stop */}
+                  <Marker
+                    position={{ lat: paso.destino.lat, lng: paso.destino.lon }}
+                    title={`Parada de desembarque: ${paso.destino.nombre}`}
+                    icon={{
+                      url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                      scaledSize: new google.maps.Size(28, 28),
+                    }}
+                  />
+                  <InfoWindow
+                    position={{ lat: paso.destino.lat, lng: paso.destino.lon }}
+                    options={{ disableAutoPan: true }}
+                  >
+                    <div className="p-1 text-zinc-950 font-sans text-[10px] font-bold">
+                      🏁 Bajar: {paso.destino.nombre}
+                    </div>
+                  </InfoWindow>
+                </React.Fragment>
+              );
+            }
+            return null;
+          })
+        )}
 
         {/* Origin pin for planner */}
         {origenPin && (
