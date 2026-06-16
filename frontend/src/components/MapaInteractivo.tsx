@@ -98,6 +98,10 @@ export function MapaInteractivo({
     );
   }
 
+  const plannerKeyPrefix = itinerarioActivoPasos && itinerarioActivoPasos.length > 0
+    ? `${itinerarioActivoPasos.length}-${itinerarioActivoPasos[0].origen?.lat || 0}-${itinerarioActivoPasos[0].destino?.lat || 0}`
+    : 'empty';
+
   // Calculate default center (Ibarra, Ecuador)
   const defaultCenter = { lat: 0.3517, lng: -78.1223 };
   
@@ -167,28 +171,26 @@ export function MapaInteractivo({
         }}
       >
         {/* Main Route shape */}
-        {shape.length > 0 && (
-          <Polyline
-            key={`route-shape-${shape.length}-${shape[0]?.latitud || 0}-${shape[0]?.longitud || 0}`}
-            path={shape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
-            options={{
-              strokeColor: '#2563eb',
-              strokeOpacity: 0.85,
-              strokeWeight: 6,
-              icons: [
-                {
-                  icon: {
-                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                    scale: 3,
-                    strokeColor: '#1d4ed8',
-                  },
-                  offset: '0%',
-                  repeat: '100px',
+        <Polyline
+          path={shape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
+          options={{
+            strokeColor: '#2563eb',
+            strokeOpacity: shape.length > 0 ? 0.85 : 0,
+            strokeWeight: 6,
+            visible: shape.length > 0,
+            icons: shape.length > 0 ? [
+              {
+                icon: {
+                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 3,
+                  strokeColor: '#1d4ed8',
                 },
-              ],
-            }}
-          />
-        )}
+                offset: '0%',
+                repeat: '100px',
+              },
+            ] : [],
+          }}
+        />
 
         {/* Travel planner steps overlay */}
         {itinerarioActivoPasos && itinerarioActivoPasos.length > 0 && (
@@ -197,7 +199,7 @@ export function MapaInteractivo({
               // Draw walk path
               return (
                 <Polyline
-                  key={`walk-${index}`}
+                  key={`${plannerKeyPrefix}-walk-${index}`}
                   path={[
                     { lat: paso.origen.lat, lng: paso.origen.lon },
                     { lat: paso.destino.lat, lng: paso.destino.lon }
@@ -234,7 +236,7 @@ export function MapaInteractivo({
 
               return (
                 <Polyline
-                  key={`transit-${index}`}
+                  key={`${plannerKeyPrefix}-transit-${index}`}
                   path={pathPoints}
                   options={{
                     strokeColor: '#3b82f6',
