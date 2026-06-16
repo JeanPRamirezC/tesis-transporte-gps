@@ -99,6 +99,9 @@ export function MapaInteractivo({
       return;
     }
 
+    // Immediately clear previous walking paths to avoid showing stale paths from other itineraries
+    setWalkingPaths({});
+
     const service = new google.maps.DirectionsService();
 
     itinerarioActivoPasos.forEach((paso, index) => {
@@ -235,18 +238,13 @@ export function MapaInteractivo({
         {itinerarioActivoPasos && itinerarioActivoPasos.length > 0 && (
           itinerarioActivoPasos.map((paso, index) => {
             if (paso.tipo === 'WALK' && paso.origen && paso.destino) {
-              // Draw walk path using Directions path if loaded, else straight fallback
-              const pathPoints = walkingPaths[index]
-                ? walkingPaths[index]
-                : [
-                    { lat: paso.origen.lat, lng: paso.origen.lon },
-                    { lat: paso.destino.lat, lng: paso.destino.lon }
-                  ];
-              const isReal = !!walkingPaths[index];
+              // Draw walk path only if Directions path is loaded (avoid straight fallback line entirely)
+              const pathPoints = walkingPaths[index];
+              if (!pathPoints) return null;
 
               return (
                 <Polyline
-                  key={`${plannerKeyPrefix}-walk-${index}-${isReal ? 'real' : 'straight'}`}
+                  key={`${plannerKeyPrefix}-walk-${index}-real`}
                   path={pathPoints}
                   options={{
                     strokeColor: '#71717a',
