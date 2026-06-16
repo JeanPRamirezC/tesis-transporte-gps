@@ -69,16 +69,18 @@ type Props = {
   onSelectIncidente?: (incidente: Incidente) => void;
 };
 
+const EMPTY_ARRAY: any[] = [];
+
 export function MapaInteractivo({
-  shape = [],
-  paradas = [],
-  unidades = [],
-  incidentes = [],
+  shape = EMPTY_ARRAY,
+  paradas = EMPTY_ARRAY,
+  unidades = EMPTY_ARRAY,
+  incidentes = EMPTY_ARRAY,
   origenPin = null,
   destinoPin = null,
   salida = null,
   llegada = null,
-  itinerarioActivoPasos = [],
+  itinerarioActivoPasos = EMPTY_ARRAY,
   mapMode,
   onMapClick,
   onSelectIncidente,
@@ -93,7 +95,7 @@ export function MapaInteractivo({
 
   React.useEffect(() => {
     if (typeof google === 'undefined' || !isLoaded || !itinerarioActivoPasos || itinerarioActivoPasos.length === 0) {
-      setWalkingPaths({});
+      setWalkingPaths((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
 
