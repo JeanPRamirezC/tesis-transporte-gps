@@ -168,7 +168,7 @@ private async obtenerMonitoreoDesdeProveedor(): Promise<VigitrackMonitoreo[]> {
 }
 
 private convertirFechaVigitrack(fecha: string): Date {
-  return new Date(fecha.replace(' ', 'T'));
+  return new Date(fecha.replace(' ', 'T') + '-05:00');
 }
 
 private async guardarMonitoreo(item: VigitrackMonitoreo) {

@@ -88,6 +88,7 @@ export default function AdminDashboardPage() {
   const getTiempoHace = (fechaStr: string | null) => {
     if (!fechaStr) return 'N/A';
     const segs = Math.floor((Date.now() - new Date(fechaStr).getTime()) / 1000);
+    if (segs < 0) return 'Hace unos instantes';
     if (segs < 60) return `Hace ${segs} seg`;
     const mins = Math.floor(segs / 60);
     if (mins < 60) return `Hace ${mins} min`;

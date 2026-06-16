@@ -786,7 +786,7 @@ export default function HomePage() {
           <MapaInteractivo
             shape={selectedRouteData?.shape || []}
             paradas={selectedRouteData?.paradas || []}
-            unidades={selectedRouteData ? selectedRouteData.unidades : globalUnidades}
+            unidades={selectedRouteData ? globalUnidades.filter(u => u.ultimaPosicion?.idRuta === selectedRouteData.ruta.idRuta) : globalUnidades}
             incidentes={incidentes}
             origenPin={origenPin}
             destinoPin={destinoPin}

@@ -35,24 +35,24 @@ export class MapaService {
 
     const unidades = await this.prisma.unidad.findMany({
       where: {
-        registrosGps: {
-          some: {
-            idRuta,
-          },
-        },
+        estado: 'ACTIVA',
       },
       include: {
         registrosGps: {
-          where: {
-            idRuta,
-          },
           orderBy: {
             fechaHora: 'desc',
           },
           take: 1,
+          include: {
+            ruta: true,
+          },
         },
       },
     });
+
+    const unidadesEnRuta = unidades.filter(
+      (u) => u.registrosGps[0]?.idRuta === idRuta,
+    );
 
     const eta = await this.etaService.calcularEtaPorRuta(idRuta);
 
@@ -82,25 +82,33 @@ export class MapaService {
         latitud: Number(rp.parada.latitud),
         longitud: Number(rp.parada.longitud),
       })),
-      unidades: unidades.map((unidad) => ({
-        idUnidad: unidad.idUnidad,
-        codigoUnidad: unidad.codigoUnidad,
-        placa: unidad.placa,
-        estado: unidad.estado,
-        ultimaPosicion: unidad.registrosGps[0]
-          ? {
-              fechaHora: unidad.registrosGps[0].fechaHora,
-              latitud: Number(unidad.registrosGps[0].latitud),
-              longitud: Number(unidad.registrosGps[0].longitud),
-              velocidad: unidad.registrosGps[0].velocidad
-                ? Number(unidad.registrosGps[0].velocidad)
-                : null,
-              rumbo: unidad.registrosGps[0].rumbo
-                ? Number(unidad.registrosGps[0].rumbo)
-                : null,
-            }
-          : null,
-      })),
+      unidades: unidadesEnRuta.map((unidad) => {
+        const gps = unidad.registrosGps[0] ?? null;
+        return {
+          idUnidad: unidad.idUnidad,
+          codigoUnidad: unidad.codigoUnidad,
+          placa: unidad.placa,
+          estado: unidad.estado,
+          ultimaPosicion: gps
+            ? {
+                idRegistroGps: gps.idRegistroGps,
+                fechaHora: gps.fechaHora,
+                latitud: Number(gps.latitud),
+                longitud: Number(gps.longitud),
+                velocidad: gps.velocidad ? Number(gps.velocidad) : null,
+                rumbo: gps.rumbo ? Number(gps.rumbo) : null,
+                idRuta: gps.idRuta,
+                ruta: gps.ruta
+                  ? {
+                      idRuta: gps.ruta.idRuta,
+                      codigoRuta: gps.ruta.codigoRuta,
+                      nombreRuta: gps.ruta.nombreRuta,
+                    }
+                  : null,
+              }
+            : null,
+        };
+      }),
       eta,
     };
   }
