@@ -169,6 +169,7 @@ export function MapaInteractivo({
         {/* Main Route shape */}
         {shape.length > 0 && (
           <Polyline
+            key={`route-shape-${shape.length}-${shape[0]?.latitud || 0}-${shape[0]?.longitud || 0}`}
             path={shape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
             options={{
               strokeColor: '#2563eb',
