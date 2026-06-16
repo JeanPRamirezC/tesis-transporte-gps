@@ -242,10 +242,11 @@ export function MapaInteractivo({
                     { lat: paso.origen.lat, lng: paso.origen.lon },
                     { lat: paso.destino.lat, lng: paso.destino.lon }
                   ];
+              const isReal = !!walkingPaths[index];
 
               return (
                 <Polyline
-                  key={`${plannerKeyPrefix}-walk-${index}`}
+                  key={`${plannerKeyPrefix}-walk-${index}-${isReal ? 'real' : 'straight'}`}
                   path={pathPoints}
                   options={{
                     strokeColor: '#71717a',
