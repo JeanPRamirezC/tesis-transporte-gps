@@ -223,14 +223,18 @@ export function MapaInteractivo({
               );
             }
             if (paso.tipo === 'TRANSIT' && paso.origen && paso.destino) {
-              // Draw transit (bus) path
+              // Draw transit (bus) path using shape if available
+              const pathPoints = paso.shape && paso.shape.length > 0
+                ? paso.shape.map((p: any) => ({ lat: p.lat ?? p.latitud, lng: p.lng ?? p.longitud }))
+                : [
+                  { lat: paso.origen.lat, lng: paso.origen.lon },
+                  { lat: paso.destino.lat, lng: paso.destino.lon },
+                ];
+
               return (
                 <Polyline
                   key={`transit-${index}`}
-                  path={[
-                    { lat: paso.origen.lat, lng: paso.origen.lon },
-                    { lat: paso.destino.lat, lng: paso.destino.lon }
-                  ]}
+                  path={pathPoints}
                   options={{
                     strokeColor: '#3b82f6',
                     strokeOpacity: 0.9,

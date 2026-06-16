@@ -16,6 +16,7 @@ export interface PasoItinerario {
   paradaOrigen?: string;
   paradaDestino?: string;
   cantidadParadas?: number;
+  shape?: { lat: number; lng: number }[];
 }
 
 export interface Itinerario {
@@ -500,7 +501,7 @@ export class PlanificadorService {
     // 7. Filtrar duplicados y ordenar por tiempo total
     const itinerariosUnicos = this.eliminarItinerariosDuplicados(itinerarios);
 
-    return itinerariosUnicos
+    const mejoresItinerarios = itinerariosUnicos
       .sort((a, b) => {
         if (a.transbordos !== b.transbordos) {
           return a.transbordos - b.transbordos;
@@ -508,6 +509,102 @@ export class PlanificadorService {
         return a.tiempoTotalSegundos - b.tiempoTotalSegundos;
       })
       .slice(0, 5);
+
+    // 8. Enriquecer los pasos TRANSIT con sus shapes reales
+    for (const iti of mejoresItinerarios) {
+      for (const paso of iti.pasos) {
+        if (paso.tipo === 'TRANSIT' && paso.idRuta && paso.origen && paso.destino) {
+          const ruta = rutas.find((r) => r.idRuta === paso.idRuta);
+          if (ruta) {
+            const idxOrigen = ruta.rutaParadas.findIndex(
+              (rp) => rp.parada.nombreParada.toLowerCase() === paso.paradaOrigen?.toLowerCase(),
+            );
+            const idxDestino = ruta.rutaParadas.findIndex(
+              (rp) => rp.parada.nombreParada.toLowerCase() === paso.paradaDestino?.toLowerCase(),
+            );
+            paso.shape = await this.obtenerSegmentoShape(
+              paso.idRuta,
+              paso.origen.lat,
+              paso.origen.lon,
+              paso.destino.lat,
+              paso.destino.lon,
+              idxOrigen !== -1 ? idxOrigen : 0,
+              idxDestino !== -1 ? idxDestino : 0,
+            );
+          }
+        }
+      }
+    }
+
+    return mejoresItinerarios;
+  }
+
+  private async obtenerSegmentoShape(
+    idRuta: number,
+    origenLat: number,
+    origenLon: number,
+    destinoLat: number,
+    destinoLon: number,
+    idxOrigen: number,
+    idxDestino: number,
+  ): Promise<{ lat: number; lng: number }[]> {
+    const shapes = await this.prisma.rutaShape.findMany({
+      where: { idRuta },
+      orderBy: { secuencia: 'asc' },
+    });
+
+    if (shapes.length === 0) return [];
+
+    let minDistanceO = Infinity;
+    let minDistanceD = Infinity;
+    let idxShapeOrigen = 0;
+    let idxShapeDestino = 0;
+
+    for (let i = 0; i < shapes.length; i++) {
+      const distO = calcularDistanciaMetros(
+        origenLat,
+        origenLon,
+        Number(shapes[i].latitud),
+        Number(shapes[i].longitud),
+      );
+      if (distO < minDistanceO) {
+        minDistanceO = distO;
+        idxShapeOrigen = i;
+      }
+
+      const distD = calcularDistanciaMetros(
+        destinoLat,
+        destinoLon,
+        Number(shapes[i].latitud),
+        Number(shapes[i].longitud),
+      );
+      if (distD < minDistanceD) {
+        minDistanceD = distD;
+        idxShapeDestino = i;
+      }
+    }
+
+    const puntos = shapes.map((s) => ({
+      lat: Number(s.latitud),
+      lng: Number(s.longitud),
+    }));
+
+    if (idxOrigen <= idxDestino) {
+      // Caso directo (no cruza la terminal)
+      // Ajustamos los índices de shape para que vayan en orden ascendente
+      if (idxShapeOrigen <= idxShapeDestino) {
+        return puntos.slice(idxShapeOrigen, idxShapeDestino + 1);
+      } else {
+        // Fallback si por distancia GPS se cruzaron
+        return puntos.slice(idxShapeDestino, idxShapeOrigen + 1).reverse();
+      }
+    } else {
+      // Caso circular (cruza la terminal, del final al principio)
+      return [
+        ...puntos.slice(idxShapeOrigen),
+        ...puntos.slice(0, idxShapeDestino + 1),
+      ];
+    }
   }
 
   private eliminarItinerariosDuplicados(itinerarios: Itinerario[]): Itinerario[] {

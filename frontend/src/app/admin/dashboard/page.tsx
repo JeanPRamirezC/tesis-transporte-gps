@@ -59,6 +59,7 @@ export default function AdminDashboardPage() {
   const [selectedRutaId, setSelectedRutaId] = useState('');
   const [processingShape, setProcessingShape] = useState(false);
   const [shapeMessage, setShapeMessage] = useState<{ text: string; success: boolean } | null>(null);
+  const [selectedTrayectoriaId, setSelectedTrayectoriaId] = useState<number | null>(null);
 
   useEffect(() => {
     if (user && user.rol === 'ADMIN') {
@@ -216,6 +217,28 @@ export default function AdminDashboardPage() {
       setProcessingShape(false);
     }
   };
+
+  const handleTrayectoriaShapeGeneration = async () => {
+    if (selectedTrayectoriaId === null) return;
+    setProcessingShape(true);
+    setShapeMessage(null);
+    try {
+      const res = await api.post(`/ruta-shapes/generar-desde-trayectoria/${selectedTrayectoriaId}`);
+      setShapeMessage({
+        text: `Proceso "Generar Desde Trayectoria" ejecutado correctamente: ${res.data?.mensaje || 'Completado.'}`,
+        success: true,
+      });
+    } catch (err: any) {
+      console.error(err);
+      setShapeMessage({
+        text: err.response?.data?.message || 'Error al procesar la acción: Generar Desde Trayectoria',
+        success: false,
+      });
+    } finally {
+      setProcessingShape(false);
+    }
+  };
+
 
   const getBadgeStyle = (tipo: string) => {
     switch (tipo) {
@@ -424,6 +447,19 @@ export default function AdminDashboardPage() {
                 </select>
               </div>
 
+                <div className="mt-2">
+                  <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                    Seleccionar Trayectoria ID
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-800 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                    value={selectedTrayectoriaId ?? ''}
+                    onChange={(e) => setSelectedTrayectoriaId(e.target.value ? parseInt(e.target.value) : null)}
+                    placeholder="ID de trayectoria"
+                  />
+                </div>
+
               {shapeMessage && (
                 <div className={`p-3 rounded-lg border text-[11px] ${
                   shapeMessage.success
@@ -455,6 +491,13 @@ export default function AdminDashboardPage() {
                   className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2 text-[11px] font-bold shadow-sm transition-all disabled:opacity-50"
                 >
                   Generar Trazado Consenso
+                </button>
+                <button
+                  onClick={handleTrayectoriaShapeGeneration}
+                  disabled={processingShape || selectedTrayectoriaId === null}
+                  className="rounded-xl bg-green-600 hover:bg-green-700 text-white py-2 text-[11px] font-bold shadow-sm transition-all disabled:opacity-50"
+                >
+                  Generar Desde Trayectoria
                 </button>
               </div>
             </div>
