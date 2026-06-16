@@ -19,9 +19,9 @@ export default function LoginPage() {
 
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { access_token } = response.data;
-      if (access_token) {
-        login(access_token);
+      const accessToken = response.data.accessToken || response.data.access_token;
+      if (accessToken) {
+        login(accessToken);
       } else {
         setError('Ocurrió un error inesperado al iniciar sesión.');
       }
