@@ -222,7 +222,34 @@ export function MapaInteractivo({
                 />
               );
             }
-            // For TRANSIT steps we can draw a direct line between stops if shape isn't loaded
+            if (paso.tipo === 'TRANSIT' && paso.origen && paso.destino) {
+              // Draw transit (bus) path
+              return (
+                <Polyline
+                  key={`transit-${index}`}
+                  path={[
+                    { lat: paso.origen.lat, lng: paso.origen.lon },
+                    { lat: paso.destino.lat, lng: paso.destino.lon }
+                  ]}
+                  options={{
+                    strokeColor: '#3b82f6',
+                    strokeOpacity: 0.9,
+                    strokeWeight: 6,
+                    icons: [
+                      {
+                        icon: {
+                          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                          scale: 2.5,
+                          strokeColor: '#1d4ed8',
+                        },
+                        offset: '0%',
+                        repeat: '60px',
+                      },
+                    ],
+                  }}
+                />
+              );
+            }
             return null;
           })
         )}

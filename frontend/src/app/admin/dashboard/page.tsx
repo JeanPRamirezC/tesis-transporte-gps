@@ -434,14 +434,7 @@ export default function AdminDashboardPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => handleShapeGeneration('generar-desde-paradas', 'Shape base desde Paradas')}
-                  disabled={processingShape || !selectedRutaId}
-                  className="rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-800 dark:border-zinc-850 dark:hover:bg-zinc-800 dark:text-white py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                >
-                  Generar desde Paradas
-                </button>
+              <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-3">
                 <button
                   onClick={() => handleShapeGeneration('snap-to-roads', 'Snap to Roads (Google API)')}
                   disabled={processingShape || !selectedRutaId}
