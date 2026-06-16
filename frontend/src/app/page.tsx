@@ -85,6 +85,7 @@ export default function HomePage() {
   // Selected Route Details for Map
   const [selectedRouteData, setSelectedRouteData] = useState<RutaMapaResponse | null>(null);
   const [loadingRouteData, setLoadingRouteData] = useState(false);
+  const [globalUnidades, setGlobalUnidades] = useState<any[]>([]);
 
   // Travel Planner States
   const [origenLat, setOrigenLat] = useState('');
@@ -112,10 +113,24 @@ export default function HomePage() {
   const [submittingReport, setSubmittingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
 
+  const fetchGlobalUnidades = async () => {
+    try {
+      const res = await api.get('/gps/ultimas-posiciones');
+      setGlobalUnidades(res.data);
+    } catch (err) {
+      console.error('Error fetching global active units:', err);
+    }
+  };
+
   // Initialization & Fetching
   useEffect(() => {
     fetchRutas();
     fetchIncidentes();
+    fetchGlobalUnidades();
+
+    // Auto-refresh active units every 15 seconds
+    const interval = setInterval(fetchGlobalUnidades, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -771,7 +786,7 @@ export default function HomePage() {
           <MapaInteractivo
             shape={selectedRouteData?.shape || []}
             paradas={selectedRouteData?.paradas || []}
-            unidades={selectedRouteData?.unidades || []}
+            unidades={selectedRouteData ? selectedRouteData.unidades : globalUnidades}
             incidentes={incidentes}
             origenPin={origenPin}
             destinoPin={destinoPin}

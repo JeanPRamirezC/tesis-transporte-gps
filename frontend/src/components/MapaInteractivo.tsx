@@ -33,6 +33,12 @@ type Unidad = {
     longitud: number;
     velocidad: number | null;
     rumbo: number | null;
+    idRuta?: number | null;
+    ruta?: {
+      idRuta: number;
+      codigoRuta: string | null;
+      nombreRuta: string;
+    } | null;
   } | null;
 };
 
@@ -389,6 +395,15 @@ export function MapaInteractivo({
                 🚌 Unidad {activeUnit.codigoUnidad}
               </h3>
               <p className="text-xs"><strong>Placa:</strong> {activeUnit.placa}</p>
+              {activeUnit.ultimaPosicion.ruta && (
+                <p className="text-xs mb-1">
+                  <strong>Ruta:</strong>{' '}
+                  <span className="rounded-sm bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-[10px] font-bold text-zinc-800">
+                    {activeUnit.ultimaPosicion.ruta.codigoRuta}
+                  </span>{' '}
+                  {activeUnit.ultimaPosicion.ruta.nombreRuta}
+                </p>
+              )}
               <p className="text-xs"><strong>Velocidad:</strong> {activeUnit.ultimaPosicion.velocidad ? `${Math.round(activeUnit.ultimaPosicion.velocidad)} km/h` : '0 km/h'}</p>
               <p className="text-xs"><strong>Estado:</strong> {activeUnit.estado}</p>
               <p className="text-xs text-zinc-400 mt-1.5 text-[10px]">Actualizado: {new Date(activeUnit.ultimaPosicion.fechaHora).toLocaleTimeString()}</p>

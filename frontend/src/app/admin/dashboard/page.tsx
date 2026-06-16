@@ -61,12 +61,38 @@ export default function AdminDashboardPage() {
   const [shapeMessage, setShapeMessage] = useState<{ text: string; success: boolean } | null>(null);
   const [selectedTrayectoriaId, setSelectedTrayectoriaId] = useState<number | null>(null);
 
+  // Active units state
+  const [unidadesActivas, setUnidadesActivas] = useState<any[]>([]);
+  const [loadingUnidades, setLoadingUnidades] = useState(true);
+
   useEffect(() => {
     if (user && user.rol === 'ADMIN') {
       fetchReportes();
       fetchRutas();
+      fetchUnidadesActivas();
     }
   }, [user]);
+
+  const fetchUnidadesActivas = async () => {
+    try {
+      setLoadingUnidades(true);
+      const res = await api.get('/gps/ultimas-posiciones');
+      setUnidadesActivas(res.data);
+    } catch (err) {
+      console.error('Error fetching active units:', err);
+    } finally {
+      setLoadingUnidades(false);
+    }
+  };
+
+  const getTiempoHace = (fechaStr: string | null) => {
+    if (!fechaStr) return 'N/A';
+    const segs = Math.floor((Date.now() - new Date(fechaStr).getTime()) / 1000);
+    if (segs < 60) return `Hace ${segs} seg`;
+    const mins = Math.floor(segs / 60);
+    if (mins < 60) return `Hace ${mins} min`;
+    return new Date(fechaStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   const fetchReportes = async () => {
     try {
@@ -505,11 +531,107 @@ export default function AdminDashboardPage() {
 
         </div>
 
+        {/* ACTIVE BUSES MONITORING TABLE */}
+        <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex justify-between items-center border-b pb-3 mb-4">
+            <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+              <span>🎛️</span> 3. Monitoreo y Estado de Unidades (Buses) en Tiempo Real
+            </h2>
+            <button onClick={fetchUnidadesActivas} className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+              🔄 Actualizar Unidades
+            </button>
+          </div>
+
+          {loadingUnidades ? (
+            <p className="text-center py-8 text-xs text-zinc-400 animate-pulse">Cargando telemetría de unidades...</p>
+          ) : unidadesActivas.length === 0 ? (
+            <p className="text-center py-8 text-xs text-zinc-400">No hay unidades registradas en el sistema.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-100 dark:border-zinc-800 text-zinc-400 font-bold">
+                    <th className="pb-3">Código Unidad</th>
+                    <th className="pb-3">Placa</th>
+                    <th className="pb-3">Ruta Asignada/Actual</th>
+                    <th className="pb-3">Última Posición (GPS)</th>
+                    <th className="pb-3">Velocidad</th>
+                    <th className="pb-3">Último Reporte</th>
+                    <th className="pb-3 text-right">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {unidadesActivas.map((unidad) => {
+                    const gps = unidad.ultimaPosicion;
+                    const velocidad = gps?.velocidad ?? 0;
+                    
+                    let velColor = 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300';
+                    if (velocidad > 60) {
+                      velColor = 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 font-extrabold animate-pulse';
+                    } else if (velocidad > 0) {
+                      velColor = 'bg-green-100 text-green-800 dark:bg-green-950/20 dark:text-green-400';
+                    } else if (gps) {
+                      velColor = 'bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400';
+                    }
+
+                    return (
+                      <tr key={`unidad-row-${unidad.idUnidad}`} className="text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                        <td className="py-3.5 pr-2 font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                          <span>🚌</span> Unidad {unidad.codigoUnidad}
+                        </td>
+                        <td className="py-3.5 pr-4 font-semibold text-zinc-500">
+                          {unidad.placa || 'Sin Placa'}
+                        </td>
+                        <td className="py-3.5 pr-4">
+                          {gps?.ruta ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="rounded bg-blue-100 text-blue-800 px-1.5 py-0.5 text-[10px] font-bold dark:bg-blue-950 dark:text-blue-300">
+                                {gps.ruta.codigoRuta}
+                              </span>
+                              <span className="font-semibold text-zinc-800 dark:text-zinc-200">{gps.ruta.nombreRuta}</span>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-400 italic">Fuera de línea / Detenido</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 pr-4 text-zinc-500 font-mono text-[10px]">
+                          {gps ? `${gps.latitud.toFixed(5)}, ${gps.longitud.toFixed(5)}` : 'Sin datos GPS'}
+                        </td>
+                        <td className="py-3.5 pr-4">
+                          {gps ? (
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${velColor}`}>
+                              {Math.round(velocidad)} km/h
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400 italic">N/A</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 pr-4 text-zinc-500 font-medium">
+                          {gps ? getTiempoHace(gps.fechaHora) : 'Nunca'}
+                        </td>
+                        <td className="py-3.5 text-right">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
+                            unidad.estado === 'ACTIVA'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400'
+                              : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
+                          }`}>
+                            {unidad.estado}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {/* MODERATION TABLE */}
         <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4">
           <div className="flex justify-between items-center border-b pb-3 mb-4">
             <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
-              3. Moderación y Auditoría de Reportes Ciudadanos
+              4. Moderación y Auditoría de Reportes Ciudadanos
             </h2>
             <button onClick={fetchReportes} className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline">
               Recargar Lista

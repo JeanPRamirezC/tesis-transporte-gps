@@ -13,6 +13,9 @@ export class GpsService {
             fechaHora: 'desc',
           },
           take: 1,
+          include: {
+            ruta: true,
+          },
         },
       },
       orderBy: {
@@ -20,12 +23,32 @@ export class GpsService {
       },
     });
 
-    return unidades.map((unidad) => ({
-      idUnidad: unidad.idUnidad,
-      codigoUnidad: unidad.codigoUnidad,
-      placa: unidad.placa,
-      estado: unidad.estado,
-      ultimaPosicion: unidad.registrosGps[0] ?? null,
-    }));
+    return unidades.map((unidad) => {
+      const gps = unidad.registrosGps[0] ?? null;
+      return {
+        idUnidad: unidad.idUnidad,
+        codigoUnidad: unidad.codigoUnidad,
+        placa: unidad.placa,
+        estado: unidad.estado,
+        ultimaPosicion: gps
+          ? {
+              idRegistroGps: gps.idRegistroGps,
+              fechaHora: gps.fechaHora,
+              latitud: Number(gps.latitud),
+              longitud: Number(gps.longitud),
+              velocidad: gps.velocidad ? Number(gps.velocidad) : null,
+              rumbo: gps.rumbo ? Number(gps.rumbo) : null,
+              idRuta: gps.idRuta,
+              ruta: gps.ruta
+                ? {
+                    idRuta: gps.ruta.idRuta,
+                    codigoRuta: gps.ruta.codigoRuta,
+                    nombreRuta: gps.ruta.nombreRuta,
+                  }
+                : null,
+            }
+          : null,
+      };
+    });
   }
 }
