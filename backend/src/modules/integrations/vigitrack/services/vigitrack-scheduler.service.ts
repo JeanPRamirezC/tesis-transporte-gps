@@ -5,6 +5,7 @@ import { TrayectoriasService } from '../../../trayectorias/services/trayectorias
 import { EtaService } from '../../../eta/services/eta.service';
 import { PrismaService } from '../../../../database/prisma.service';
 import { estaDentroDeVentanaOperativa } from '../../../../common/utils/operation-window.util';
+import { ReportesService } from '../../../reportes/services/reportes.service';
 
 @Injectable()
 export class VigitrackSchedulerService {
@@ -17,6 +18,7 @@ export class VigitrackSchedulerService {
     private readonly trayectoriasService: TrayectoriasService,
     private readonly etaService: EtaService,
     private readonly prisma: PrismaService,
+    private readonly reportesService: ReportesService,
   ) {}
 
   @Cron(CronExpression.EVERY_10_SECONDS)
@@ -128,6 +130,19 @@ export class VigitrackSchedulerService {
       );
     } catch (error) {
       this.logger.error('Error en la limpieza nocturna de estimaciones de ETA', error);
+    }
+  }
+
+  @Cron('0 30 1 * * *') // Todos los días a la 01:30 AM
+  async handleLimpiezaReportesCron() {
+    this.logger.log('Iniciando limpieza de reportes de incidentes antiguos (30 días)...');
+    try {
+      const resultado = await this.reportesService.limpiarReportesAntiguos();
+      this.logger.log(
+        `Limpieza completada. Incidentes eliminados: ${resultado.registrosEliminados}.`
+      );
+    } catch (error) {
+      this.logger.error('Error en la limpieza nocturna de reportes de incidentes', error);
     }
   }
 }

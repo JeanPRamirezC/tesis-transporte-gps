@@ -48,6 +48,8 @@ model Ruta {
   estimacionesEta   EstimacionEta[]
   registrosGps      RegistroGps[]
   rutaShapes        RutaShape[]
+  favoritos         Favorito[]
+  reportes          ReporteIncidente[]
 
   @@map("rutas")
 }
@@ -244,3 +246,60 @@ enum EstadoTrayectoria {
   DESVIO_PROLONGADO
   SIN_SENAL
 }
+
+enum RolUsuario {
+  ADMIN
+  PUBLICO
+}
+
+enum TipoIncidente {
+  TRAFICO_ALTO
+  BUS_LLENO
+  RETRASO_BUS
+  ACCIDENTE
+  PARADA_DANADA
+  OTRO
+}
+
+model Usuario {
+  idUsuario    Int                @id @default(autoincrement()) @map("id_usuario")
+  email        String             @unique
+  passwordHash String             @map("password_hash")
+  rol          RolUsuario         @default(PUBLICO)
+  creadoEn     DateTime           @default(now()) @map("creado_en")
+  favoritos    Favorito[]
+  reportes     ReporteIncidente[]
+
+  @@map("usuarios")
+}
+
+model Favorito {
+  idFavorito Int      @id @default(autoincrement()) @map("id_favorito")
+  idUsuario  Int      @map("id_usuario")
+  idRuta     Int      @map("id_ruta")
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  usuario Usuario @relation(fields: [idUsuario], references: [idUsuario], onDelete: Cascade)
+  ruta    Ruta    @relation(fields: [idRuta], references: [idRuta], onDelete: Cascade)
+
+  @@unique([idUsuario, idRuta])
+  @@map("usuarios_favoritos")
+}
+
+model ReporteIncidente {
+  idReporte     Int           @id @default(autoincrement()) @map("id_reporte")
+  idUsuario     Int           @map("id_usuario")
+  idRuta        Int?          @map("id_ruta")
+  tipoIncidente TipoIncidente @map("tipo_incidente")
+  descripcion   String?       @db.VarChar(250)
+  latitud       Decimal       @db.Decimal(10, 7)
+  longitud      Decimal       @db.Decimal(10, 7)
+  creadoEn      DateTime      @default(now()) @map("creado_en")
+
+  usuario Usuario @relation(fields: [idUsuario], references: [idUsuario], onDelete: Cascade)
+  ruta    Ruta?   @relation(fields: [idRuta], references: [idRuta], onDelete: Cascade)
+
+  @@index([creadoEn])
+  @@map("reportes_incidentes")
+}
+

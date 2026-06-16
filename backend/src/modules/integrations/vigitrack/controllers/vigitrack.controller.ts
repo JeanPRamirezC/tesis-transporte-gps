@@ -1,8 +1,15 @@
-import { Controller, Get, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VigitrackService } from '../services/vigitrack.service';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../auth/guards/roles.guard';
+import { Roles } from '../../../auth/decorators/roles.decorator';
+import { RolUsuario } from '@prisma/client';
 
 @ApiTags('Integración Vigitrack')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(RolUsuario.ADMIN)
 @Controller('integraciones/vigitrack')
 export class VigitrackController {
   constructor(private readonly vigitrackService: VigitrackService) {}

@@ -14,6 +14,9 @@ import { EtaModule } from './modules/eta/eta.module';
 import { MapaModule } from './modules/mapa/mapa.module';
 import { GtfsModule } from './modules/gtfs/gtfs.module';
 import { PlanificadorModule } from './modules/planificador/planificador.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { FavoritosModule } from './modules/favoritos/favoritos.module';
+import { ReportesModule } from './modules/reportes/reportes.module';
 
 @Module({
   imports: [
@@ -33,6 +36,9 @@ import { PlanificadorModule } from './modules/planificador/planificador.module';
     MapaModule,
     GtfsModule,
     PlanificadorModule,
+    AuthModule,
+    FavoritosModule,
+    ReportesModule,
   ],
 })
 export class AppModule {}

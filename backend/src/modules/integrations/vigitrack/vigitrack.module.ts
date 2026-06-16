@@ -7,9 +7,10 @@ import { VigitrackService } from './services/vigitrack.service';
 import { TrayectoriasModule } from '../../trayectorias/trayectorias.module';
 import { TiemposTramoModule } from '../../tiempos-tramo/tiempos-tramo.module';
 import { EtaModule } from '../../eta/eta.module';
+import { ReportesModule } from '../../reportes/reportes.module';
 
 @Module({
-  imports: [HttpModule, TrayectoriasModule, TiemposTramoModule, EtaModule],
+  imports: [HttpModule, TrayectoriasModule, TiemposTramoModule, EtaModule, ReportesModule],
   controllers: [VigitrackController],
   providers: [VigitrackService, VigitrackSchedulerService],
 })
