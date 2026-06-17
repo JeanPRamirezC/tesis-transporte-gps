@@ -72,6 +72,10 @@ export default function AdminDashboardPage() {
   const [adminPreviewPoints, setAdminPreviewPoints] = useState<any[]>([]);
   const [loadingMapData, setLoadingMapData] = useState(false);
 
+  // Trayectorias dropdown states
+  const [trayectorias, setTrayectorias] = useState<any[]>([]);
+  const [loadingTrayectorias, setLoadingTrayectorias] = useState(true);
+
   useEffect(() => {
     if (selectedRutaId) {
       cargarDatosMapaRuta(parseInt(selectedRutaId));
@@ -121,25 +125,49 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handlePrevisualizarTrayectoria = async () => {
-    if (selectedTrayectoriaId === null) return;
+  const fetchTrayectorias = async () => {
+    try {
+      setLoadingTrayectorias(true);
+      const res = await api.get('/trayectorias');
+      setTrayectorias(res.data);
+    } catch (err) {
+      console.error('Error fetching trayectorias:', err);
+    } finally {
+      setLoadingTrayectorias(false);
+    }
+  };
+
+  const handleSelectTrayectoria = async (idVal: number | null) => {
+    setSelectedTrayectoriaId(idVal);
+    if (idVal === null) {
+      setAdminPreviewPoints([]);
+      return;
+    }
+    
+    // Find the trajectory to pre-select its route automatically for comparison
+    const trayect = trayectorias.find(t => t.idTrayectoria === idVal);
+    if (trayect && trayect.idRuta) {
+      setSelectedRutaId(trayect.idRuta.toString());
+    }
+
+    // Immediately fetch points for previewing on the map
     try {
       setProcessingShape(true);
       setShapeMessage(null);
-      const res = await api.get(`/trayectorias/${selectedTrayectoriaId}/puntos`);
+      const res = await api.get(`/trayectorias/${idVal}/puntos`);
       if (res.data && res.data.length > 0) {
         setAdminPreviewPoints(res.data.map((p: any) => ({
           latitud: Number(p.latitud),
           longitud: Number(p.longitud)
         })));
         setShapeMessage({
-          text: `Trayectoria ${selectedTrayectoriaId} cargada en el mapa (color verde). Total de puntos GPS: ${res.data.length}.`,
+          text: `Trayectoria ${idVal} cargada en el mapa (color verde). Total de puntos GPS: ${res.data.length}.`,
           success: true
         });
       } else {
         setAdminPreviewPoints([]);
         setShapeMessage({
-          text: `La trayectoria ${selectedTrayectoriaId} no tiene registros GPS para mostrar.`,
+          text: `La trayectoria ${idVal} no tiene registros GPS para mostrar.`,
           success: false
         });
       }
@@ -154,11 +182,17 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handlePrevisualizarTrayectoria = async () => {
+    if (selectedTrayectoriaId === null) return;
+    await handleSelectTrayectoria(selectedTrayectoriaId);
+  };
+
   useEffect(() => {
     if (user && user.rol === 'ADMIN') {
       fetchReportes();
       fetchRutas();
       fetchUnidadesActivas();
+      fetchTrayectorias();
     }
   }, [user]);
 
@@ -575,15 +609,44 @@ export default function AdminDashboardPage() {
 
                 <div className="mt-2">
                   <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                    Seleccionar Trayectoria ID
+                    Seleccionar Trayectoria (Historial GPS)
                   </label>
-                  <input
-                    type="number"
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-800 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
-                    value={selectedTrayectoriaId ?? ''}
-                    onChange={(e) => setSelectedTrayectoriaId(e.target.value ? parseInt(e.target.value) : null)}
-                    placeholder="ID de trayectoria"
-                  />
+                  {loadingTrayectorias ? (
+                    <div className="text-[10px] text-zinc-400 animate-pulse">Cargando trayectorias...</div>
+                  ) : (
+                    <select
+                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-800 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                      value={selectedTrayectoriaId ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value ? parseInt(e.target.value) : null;
+                        handleSelectTrayectoria(val);
+                      }}
+                    >
+                      <option value="">-- Seleccionar trayectoria para previsualizar --</option>
+                      {trayectorias.map((t) => {
+                        const fecha = new Date(t.fechaInicio).toLocaleDateString('es-EC', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        });
+                        
+                        let estadoLabel = 'Incompleta';
+                        if (t.estado === 'COMPLETADA') {
+                          estadoLabel = 'Vuelta Completada';
+                        } else if (t.estado === 'EN_CURSO') {
+                          estadoLabel = 'En Curso';
+                        }
+                        
+                        return (
+                          <option key={`opt-trayect-${t.idTrayectoria}`} value={t.idTrayectoria}>
+                            ID: {t.idTrayectoria} | Ruta: {t.ruta?.codigoRuta || 'S/R'} - {t.ruta?.nombreRuta || 'S/N'} | Bus: {t.unidad?.codigoUnidad || 'S/B'} | {estadoLabel} ({fecha})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
                 </div>
 
                 {shapeMessage && (
