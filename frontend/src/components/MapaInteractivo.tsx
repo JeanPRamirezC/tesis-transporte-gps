@@ -219,7 +219,7 @@ export function MapaInteractivo({
           path={shape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
           options={{
             strokeColor: '#2563eb',
-            strokeOpacity: shape.length > 0 ? 0.85 : 0,
+            strokeOpacity: shape.length > 0 ? 0.65 : 0, // Semi-transparent blue so preview overlaps are obvious
             strokeWeight: 6,
             visible: shape.length > 0,
             icons: shape.length > 0 ? [
@@ -241,18 +241,30 @@ export function MapaInteractivo({
           path={previewShape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
           options={{
             strokeColor: '#10b981', // Emerald/green for preview
-            strokeOpacity: previewShape.length > 0 ? 0.9 : 0,
-            strokeWeight: 5,
+            strokeOpacity: 0, // Main line is invisible, only dashes are drawn
             visible: previewShape.length > 0,
             icons: previewShape.length > 0 ? [
               {
                 icon: {
-                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                  scale: 2.5,
-                  strokeColor: '#047857', // Darker green arrows
+                  path: 'M 0,-2 0,2', // Long dash SVG path
+                  strokeColor: '#10b981',
+                  strokeOpacity: 0.9,
+                  strokeWeight: 4,
+                  scale: 3,
                 },
                 offset: '0%',
-                repeat: '100px',
+                repeat: '24px',
+              },
+              {
+                icon: {
+                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 2,
+                  strokeColor: '#047857',
+                  fillColor: '#047857',
+                  fillOpacity: 1,
+                },
+                offset: '50%',
+                repeat: '120px',
               },
             ] : [],
           }}

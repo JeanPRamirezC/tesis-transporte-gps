@@ -76,6 +76,10 @@ export default function AdminDashboardPage() {
   const [trayectorias, setTrayectorias] = useState<any[]>([]);
   const [loadingTrayectorias, setLoadingTrayectorias] = useState(true);
 
+  // Layer visibility toggles
+  const [showOfficialLayer, setShowOfficialLayer] = useState(true);
+  const [showPreviewLayer, setShowPreviewLayer] = useState(true);
+
   useEffect(() => {
     if (selectedRutaId) {
       cargarDatosMapaRuta(parseInt(selectedRutaId));
@@ -705,9 +709,35 @@ export default function AdminDashboardPage() {
 
           {/* INTERACTIVE PREVIEW MAP (Right, 5 cols) */}
           <div className="lg:col-span-5 flex flex-col rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 h-full min-h-[500px]">
-            <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-2">
+            <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-3 flex items-center gap-2">
               <span>🗺️</span> Mapa de Previsualización y Control
             </h2>
+            
+            {/* Layer Toggles */}
+            <div className="flex items-center justify-between mb-3 bg-zinc-50 dark:bg-zinc-950 p-2.5 rounded-xl border border-zinc-150 dark:border-zinc-850">
+              <span className="text-[10px] uppercase font-bold text-zinc-400 dark:text-zinc-500">Capas del Mapa:</span>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showOfficialLayer}
+                    onChange={(e) => setShowOfficialLayer(e.target.checked)}
+                    className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-600 inline-block"></span> Ruta Oficial</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showPreviewLayer}
+                    onChange={(e) => setShowPreviewLayer(e.target.checked)}
+                    className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                  />
+                  <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500 inline-block"></span> Trayectoria</span>
+                </label>
+              </div>
+            </div>
+
             <div className="relative flex-1 w-full h-[400px] lg:h-full min-h-[350px] rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
               {/* If no route selected, show a helper message */}
               {!selectedRutaId && (
@@ -727,9 +757,9 @@ export default function AdminDashboardPage() {
                 </div>
               )}
               <MapaInteractivo
-                shape={adminShapePoints}
-                previewShape={adminPreviewPoints}
-                paradas={adminParadas}
+                shape={showOfficialLayer ? adminShapePoints : []}
+                previewShape={showPreviewLayer ? adminPreviewPoints : []}
+                paradas={showOfficialLayer ? adminParadas : []}
                 mapMode="view"
                 onMapClick={() => {}}
               />
