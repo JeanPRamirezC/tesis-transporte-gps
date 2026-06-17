@@ -138,11 +138,13 @@ export class EtaService {
 
     const velocidadUsadaMps = velocidadUsadaKmh / 3.6;
 
+    const N = rutaParadas.length;
+
     // Detección dinámica de la siguiente parada objetivo (saltarse paradas si ya pasó o está más cerca de la i+2)
     let indiceSiguienteObjetivo = indiceParadaActual + 1;
     let menorDistancia = Infinity;
 
-    for (let k = indiceParadaActual + 1; k < rutaParadas.length; k++) {
+    for (let k = indiceParadaActual + 1; k < N; k++) {
       const paradaEval = rutaParadas[k];
       const dist = calcularDistanciaMetros(
         Number(ultimoGps.latitud),
@@ -160,10 +162,14 @@ export class EtaService {
       }
     }
 
+    // Asegurar que el índice objetivo esté dentro de los límites de la ruta circular
+    indiceSiguienteObjetivo = indiceSiguienteObjetivo % N;
+
     let acumuladoSegundos = 0;
     const etas = [];
 
-    for (let j = indiceSiguienteObjetivo; j < rutaParadas.length; j++) {
+    for (let step = 0; step < N; step++) {
+      const j = (indiceSiguienteObjetivo + step) % N;
       const destino = rutaParadas[j];
       let segundosTramo = 0;
       let muestrasHistoricas = 0;
@@ -177,13 +183,14 @@ export class EtaService {
         Number(destino.parada.longitud),
       );
 
-      if (j === indiceSiguienteObjetivo) {
+      if (step === 0) {
         // Primer tramo: desde la posición GPS real hasta la parada objetivo
         segundosTramo = Math.round(distanciaAlBus / velocidadUsadaMps);
         tipoCalculo = 'REAL_TIME_GPS';
       } else {
         // Tramos subsiguientes: promedios históricos o fallback geográfico
-        const origen = rutaParadas[j - 1];
+        const prevIdx = (j - 1 + N) % N;
+        const origen = rutaParadas[prevIdx];
         const clave = `${origen.idParada}-${destino.idParada}`;
         const promedio = mapaPromedios.get(clave);
 
