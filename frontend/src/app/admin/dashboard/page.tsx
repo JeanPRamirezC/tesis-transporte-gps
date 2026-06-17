@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/services/api';
+import { MapaInteractivo } from '@/components/MapaInteractivo';
 
 type Reporte = {
   idReporte: number;
@@ -64,6 +65,94 @@ export default function AdminDashboardPage() {
   // Active units state
   const [unidadesActivas, setUnidadesActivas] = useState<any[]>([]);
   const [loadingUnidades, setLoadingUnidades] = useState(true);
+
+  // Admin Map preview states
+  const [adminShapePoints, setAdminShapePoints] = useState<any[]>([]);
+  const [adminParadas, setAdminParadas] = useState<any[]>([]);
+  const [adminPreviewPoints, setAdminPreviewPoints] = useState<any[]>([]);
+  const [loadingMapData, setLoadingMapData] = useState(false);
+
+  useEffect(() => {
+    if (selectedRutaId) {
+      cargarDatosMapaRuta(parseInt(selectedRutaId));
+    } else {
+      setAdminShapePoints([]);
+      setAdminParadas([]);
+      setAdminPreviewPoints([]);
+    }
+  }, [selectedRutaId]);
+
+  const cargarDatosMapaRuta = async (idRuta: number) => {
+    try {
+      setLoadingMapData(true);
+      
+      // 1. Fetch route shape
+      const shapeRes = await api.get(`/ruta-shapes/${idRuta}`);
+      if (shapeRes.data && shapeRes.data.puntos) {
+        setAdminShapePoints(shapeRes.data.puntos.map((p: any) => ({
+          latitud: Number(p.latitud),
+          longitud: Number(p.longitud)
+        })));
+      } else {
+        setAdminShapePoints([]);
+      }
+
+      // 2. Fetch route paradas
+      const rutaRes = await api.get(`/rutas/${idRuta}`);
+      if (rutaRes.data && rutaRes.data.rutaParadas) {
+        setAdminParadas(rutaRes.data.rutaParadas.map((rp: any) => ({
+          idParada: rp.parada.idParada,
+          nombreParada: rp.parada.nombreParada,
+          ordenParada: rp.ordenParada,
+          latitud: Number(rp.parada.latitud),
+          longitud: Number(rp.parada.longitud)
+        })));
+      } else {
+        setAdminParadas([]);
+      }
+      
+      // Clear previous preview
+      setAdminPreviewPoints([]);
+
+    } catch (err) {
+      console.error('Error loading route map data:', err);
+    } finally {
+      setLoadingMapData(false);
+    }
+  };
+
+  const handlePrevisualizarTrayectoria = async () => {
+    if (selectedTrayectoriaId === null) return;
+    try {
+      setProcessingShape(true);
+      setShapeMessage(null);
+      const res = await api.get(`/trayectorias/${selectedTrayectoriaId}/puntos`);
+      if (res.data && res.data.length > 0) {
+        setAdminPreviewPoints(res.data.map((p: any) => ({
+          latitud: Number(p.latitud),
+          longitud: Number(p.longitud)
+        })));
+        setShapeMessage({
+          text: `Trayectoria ${selectedTrayectoriaId} cargada en el mapa (color verde). Total de puntos GPS: ${res.data.length}.`,
+          success: true
+        });
+      } else {
+        setAdminPreviewPoints([]);
+        setShapeMessage({
+          text: `La trayectoria ${selectedTrayectoriaId} no tiene registros GPS para mostrar.`,
+          success: false
+        });
+      }
+    } catch (err: any) {
+      console.error('Error loading trajectory points:', err);
+      setShapeMessage({
+        text: err.response?.data?.message || 'Error al cargar los puntos de la trayectoria.',
+        success: false
+      });
+    } finally {
+      setProcessingShape(false);
+    }
+  };
 
   useEffect(() => {
     if (user && user.rol === 'ADMIN') {
@@ -234,6 +323,8 @@ export default function AdminDashboardPage() {
         text: `Proceso "${label}" ejecutado correctamente: ${res.data?.mensaje || 'Completado.'}`,
         success: true,
       });
+      // Refresh map shape points
+      cargarDatosMapaRuta(parseInt(selectedRutaId));
     } catch (err: any) {
       console.error(err);
       setShapeMessage({
@@ -255,6 +346,11 @@ export default function AdminDashboardPage() {
         text: `Proceso "Generar Desde Trayectoria" ejecutado correctamente: ${res.data?.mensaje || 'Completado.'}`,
         success: true,
       });
+      // Refresh map shape points
+      const newIdRuta = res.data?.idRuta || (selectedRutaId ? parseInt(selectedRutaId) : null);
+      if (newIdRuta) {
+        cargarDatosMapaRuta(newIdRuta);
+      }
     } catch (err: any) {
       console.error(err);
       setShapeMessage({
@@ -379,100 +475,103 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* UTILITIES ACCORDION SECTION */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* UTILITIES PANEL + MAP GRID */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           
-          {/* GTFS & VIGITRACK PANEL */}
-          <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-6">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4">
-                1. Feed GTFS y Telemetría Vigitrack
-              </h2>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={handleSyncRutas}
-                  disabled={syncingRutas}
-                  className="rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100/50 py-3 text-xs font-bold text-blue-700 transition-colors disabled:opacity-50 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-400"
-                >
-                  {syncingRutas ? 'Sincronizando...' : '🔄 Sincronizar Rutas Vigitrack'}
-                </button>
-                <button
-                  onClick={handleSyncMonitoreo}
-                  disabled={syncingMonitoreo}
-                  className="rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100/50 py-3 text-xs font-bold text-blue-700 transition-colors disabled:opacity-50 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-400"
-                >
-                  {syncingMonitoreo ? 'Sincronizando...' : '📡 Sincronizar GPS Vigitrack'}
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Generador de Feed GTFS Static</h3>
-              <div className="flex gap-4">
-                <button
-                  onClick={handleGtfsPreview}
-                  disabled={loadingGtfs}
-                  className="flex-1 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-white py-2.5 text-xs font-bold transition-colors disabled:opacity-50"
-                >
-                  {loadingGtfs ? 'Analizando...' : '🔎 Diagnóstico GTFS'}
-                </button>
-                <button
-                  onClick={handleGtfsDownload}
-                  disabled={downloadingGtfs}
-                  className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-xs font-bold shadow-md shadow-blue-500/10 transition-colors disabled:opacity-50"
-                >
-                  {downloadingGtfs ? 'Generando ZIP...' : '📥 Exportar gtfs.zip'}
-                </button>
-              </div>
-
-              {gtfsPreview && (
-                <div className="rounded-xl bg-zinc-50 border p-4 text-xs dark:bg-zinc-950/50 dark:border-zinc-850 space-y-2.5">
-                  <h4 className="font-bold text-zinc-700 dark:text-zinc-300">Diagnóstico de Datos para GTFS:</h4>
-                  <div className="grid grid-cols-2 gap-2 text-zinc-600 dark:text-zinc-400 font-medium">
-                    <span>Rutas válidas: <strong>{gtfsPreview.conteoRutas}</strong></span>
-                    <span>Paradas válidas: <strong>{gtfsPreview.conteoParadas}</strong></span>
-                    <span>Días de calendario: <strong>{gtfsPreview.conteoCalendar}</strong></span>
-                    <span>Puntos de shapes: <strong>{gtfsPreview.conteoShapes}</strong></span>
-                    <span>Horarios registrados: <strong>{gtfsPreview.conteoStopTimes}</strong></span>
-                    <span className={gtfsPreview.paradasHuerfanas > 0 ? 'text-amber-500 font-bold' : ''}>
-                      Paradas huérfanas: <strong>{gtfsPreview.paradasHuerfanas}</strong>
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-zinc-400 italic mt-2 border-t pt-2 border-zinc-200/50 dark:border-zinc-800">
-                    Mensaje: {gtfsPreview.diagnostico}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* SHAPE RECONSTRUCTION SNAP TO ROADS */}
-          <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4">
-            <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4">
-              2. Motor de Reconstrucción de Shapes
-            </h2>
-            <p className="text-xs text-zinc-500 leading-relaxed dark:text-zinc-400">
-              Genera o corrige el trazado cartográfico de las líneas de autobús sobre calles reales utilizando Google Roads API (Snap to Roads) a partir de telemetría histórica.
-            </p>
-
-            <div className="space-y-3">
+          {/* CONTROL PANELS (Left, 7 cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            
+            {/* GTFS & VIGITRACK PANEL */}
+            <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-6">
               <div>
-                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                  Seleccionar Línea/Ruta
-                </label>
-                <select
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-800 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
-                  value={selectedRutaId}
-                  onChange={(e) => setSelectedRutaId(e.target.value)}
-                >
-                  <option value="">-- Seleccionar ruta --</option>
-                  {rutas.map((r) => (
-                    <option key={`opt-admin-${r.idRuta}`} value={r.idRuta}>
-                      {r.codigoRuta} - {r.nombreRuta}
-                    </option>
-                  ))}
-                </select>
+                <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4">
+                  1. Feed GTFS y Telemetría Vigitrack
+                </h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={handleSyncRutas}
+                    disabled={syncingRutas}
+                    className="rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100/50 py-3 text-xs font-bold text-blue-700 transition-colors disabled:opacity-50 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-400"
+                  >
+                    {syncingRutas ? 'Sincronizando...' : '🔄 Sincronizar Rutas Vigitrack'}
+                  </button>
+                  <button
+                    onClick={handleSyncMonitoreo}
+                    disabled={syncingMonitoreo}
+                    className="rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100/50 py-3 text-xs font-bold text-blue-700 transition-colors disabled:opacity-50 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-400"
+                  >
+                    {syncingMonitoreo ? 'Sincronizando...' : '📡 Sincronizar GPS Vigitrack'}
+                  </button>
+                </div>
               </div>
+
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Generador de Feed GTFS Static</h3>
+                <div className="flex gap-4">
+                  <button
+                    onClick={handleGtfsPreview}
+                    disabled={loadingGtfs}
+                    className="flex-1 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-white py-2.5 text-xs font-bold transition-colors disabled:opacity-50"
+                  >
+                    {loadingGtfs ? 'Analizando...' : '🔎 Diagnóstico GTFS'}
+                  </button>
+                  <button
+                    onClick={handleGtfsDownload}
+                    disabled={downloadingGtfs}
+                    className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-xs font-bold shadow-md shadow-blue-500/10 transition-colors disabled:opacity-50"
+                  >
+                    {downloadingGtfs ? 'Generando ZIP...' : '📥 Exportar gtfs.zip'}
+                  </button>
+                </div>
+
+                {gtfsPreview && (
+                  <div className="rounded-xl bg-zinc-50 border p-4 text-xs dark:bg-zinc-950/50 dark:border-zinc-850 space-y-2.5">
+                    <h4 className="font-bold text-zinc-700 dark:text-zinc-300">Diagnóstico de Datos para GTFS:</h4>
+                    <div className="grid grid-cols-2 gap-2 text-zinc-600 dark:text-zinc-400 font-medium">
+                      <span>Rutas válidas: <strong>{gtfsPreview.conteoRutas}</strong></span>
+                      <span>Paradas válidas: <strong>{gtfsPreview.conteoParadas}</strong></span>
+                      <span>Días de calendario: <strong>{gtfsPreview.conteoCalendar}</strong></span>
+                      <span>Puntos de shapes: <strong>{gtfsPreview.conteoShapes}</strong></span>
+                      <span>Horarios registrados: <strong>{gtfsPreview.conteoStopTimes}</strong></span>
+                      <span className={gtfsPreview.paradasHuerfanas > 0 ? 'text-amber-500 font-bold' : ''}>
+                        Paradas huérfanas: <strong>{gtfsPreview.paradasHuerfanas}</strong>
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 italic mt-2 border-t pt-2 border-zinc-200/50 dark:border-zinc-800">
+                      Mensaje: {gtfsPreview.diagnostico}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SHAPE RECONSTRUCTION SNAP TO ROADS */}
+            <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4">
+              <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4">
+                2. Motor de Reconstrucción de Shapes
+              </h2>
+              <p className="text-xs text-zinc-500 leading-relaxed dark:text-zinc-400">
+                Genera o corrige el trazado cartográfico de las líneas de autobús sobre calles reales utilizando Google Roads API (Snap to Roads) a partir de telemetría histórica.
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                    Seleccionar Línea/Ruta
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-800 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                    value={selectedRutaId}
+                    onChange={(e) => setSelectedRutaId(e.target.value)}
+                  >
+                    <option value="">-- Seleccionar ruta --</option>
+                    {rutas.map((r) => (
+                      <option key={`opt-admin-${r.idRuta}`} value={r.idRuta}>
+                        {r.codigoRuta} - {r.nombreRuta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <div className="mt-2">
                   <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
@@ -487,45 +586,106 @@ export default function AdminDashboardPage() {
                   />
                 </div>
 
-              {shapeMessage && (
-                <div className={`p-3 rounded-lg border text-[11px] ${
-                  shapeMessage.success
-                    ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-900/50'
-                    : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900/50'
-                }`}>
-                  {shapeMessage.text}
+                {shapeMessage && (
+                  <div className={`p-3 rounded-lg border text-[11px] ${
+                    shapeMessage.success
+                      ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-900/50'
+                      : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900/50'
+                  }`}>
+                    {shapeMessage.text}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
+                  <button
+                    onClick={() => handleShapeGeneration('snap-to-roads', 'Snap to Roads (Google API)')}
+                    disabled={processingShape || !selectedRutaId}
+                    className="rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 dark:border-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-950/50 py-2.5 text-[11px] font-bold transition-all disabled:opacity-50"
+                  >
+                    Snap to Roads (Google API)
+                  </button>
+                  <button
+                    onClick={() => handleShapeGeneration('reconstruir', 'Reconstrucción GPS')}
+                    disabled={processingShape || !selectedRutaId}
+                    className="rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-800 dark:border-zinc-850 dark:hover:bg-zinc-800 dark:text-white py-2.5 text-[11px] font-bold transition-all disabled:opacity-50"
+                  >
+                    Reconstruir de GPS
+                  </button>
+                  <button
+                    onClick={() => handleShapeGeneration('generar-final', 'Consenso de Shapes')}
+                    disabled={processingShape || !selectedRutaId}
+                    className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-[11px] font-bold shadow-sm transition-all disabled:opacity-50"
+                  >
+                    Generar Trazado Consenso
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handlePrevisualizarTrayectoria}
+                      disabled={processingShape || selectedTrayectoriaId === null}
+                      className="flex-1 rounded-xl border border-green-200 hover:bg-green-50 text-green-700 dark:border-green-900/30 dark:text-green-400 dark:hover:bg-green-950/50 py-2.5 text-[11px] font-bold transition-all disabled:opacity-50"
+                    >
+                      🔎 Previsualizar Trayect.
+                    </button>
+                    <button
+                      onClick={handleTrayectoriaShapeGeneration}
+                      disabled={processingShape || selectedTrayectoriaId === null}
+                      className="flex-1 rounded-xl bg-green-600 hover:bg-green-700 text-white py-2.5 text-[11px] font-bold shadow-sm transition-all disabled:opacity-50"
+                    >
+                      💾 Guardar en BD
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* INTERACTIVE PREVIEW MAP (Right, 5 cols) */}
+          <div className="lg:col-span-5 flex flex-col rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 h-full min-h-[500px]">
+            <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-2">
+              <span>🗺️</span> Mapa de Previsualización y Control
+            </h2>
+            <div className="relative flex-1 w-full h-[400px] lg:h-full min-h-[350px] rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
+              {/* If no route selected, show a helper message */}
+              {!selectedRutaId && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-50/90 text-center p-4 dark:bg-zinc-950/90">
+                  <span className="text-3xl mb-2">🗺️</span>
+                  <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                    Selecciona una ruta en el panel izquierdo para visualizar su trazado y paradas.
+                  </p>
                 </div>
               )}
-
-              <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-3">
-                <button
-                  onClick={() => handleShapeGeneration('snap-to-roads', 'Snap to Roads (Google API)')}
-                  disabled={processingShape || !selectedRutaId}
-                  className="rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 dark:border-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-950/50 py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                >
-                  Snap to Roads (Google API)
-                </button>
-                <button
-                  onClick={() => handleShapeGeneration('reconstruir', 'Reconstrucción GPS')}
-                  disabled={processingShape || !selectedRutaId}
-                  className="rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-800 dark:border-zinc-850 dark:hover:bg-zinc-800 dark:text-white py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                >
-                  Reconstruir de GPS
-                </button>
-                <button
-                  onClick={() => handleShapeGeneration('generar-final', 'Consenso de Shapes')}
-                  disabled={processingShape || !selectedRutaId}
-                  className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2 text-[11px] font-bold shadow-sm transition-all disabled:opacity-50"
-                >
-                  Generar Trazado Consenso
-                </button>
-                <button
-                  onClick={handleTrayectoriaShapeGeneration}
-                  disabled={processingShape || selectedTrayectoriaId === null}
-                  className="rounded-xl bg-green-600 hover:bg-green-700 text-white py-2 text-[11px] font-bold shadow-sm transition-all disabled:opacity-50"
-                >
-                  Generar Desde Trayectoria
-                </button>
+              {loadingMapData && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-xs dark:bg-zinc-900/70">
+                  <svg className="h-6 w-6 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              )}
+              <MapaInteractivo
+                shape={adminShapePoints}
+                previewShape={adminPreviewPoints}
+                paradas={adminParadas}
+                mapMode="view"
+                onMapClick={() => {}}
+              />
+            </div>
+            {/* Map Legends */}
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t pt-3">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-6 rounded-full bg-blue-600 inline-block"></span>
+                <span>Trazado Oficial (Actual)</span>
+              </div>
+              {adminPreviewPoints.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-6 rounded-full bg-emerald-500 inline-block"></span>
+                  <span>Previsualización Trayectoria</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-full bg-blue-500 border border-white inline-block"></span>
+                <span>Paradas de la Ruta</span>
               </div>
             </div>
           </div>

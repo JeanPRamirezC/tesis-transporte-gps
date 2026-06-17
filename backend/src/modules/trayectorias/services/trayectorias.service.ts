@@ -56,6 +56,35 @@ export class TrayectoriasService {
     return trayectoria;
   }
 
+  async obtenerPuntosGps(idTrayectoria: number) {
+    const trayectoria = await this.prisma.trayectoria.findUnique({
+      where: {
+        idTrayectoria,
+      },
+    });
+
+    if (!trayectoria) {
+      throw new NotFoundException(
+        `No existe una trayectoria con id ${idTrayectoria}`,
+      );
+    }
+
+    return this.prisma.registroGps.findMany({
+      where: {
+        idRuta: trayectoria.idRuta,
+        idUnidad: trayectoria.idUnidad,
+        esOperativo: true,
+        fechaHora: {
+          gte: trayectoria.fechaInicio,
+          lte: trayectoria.fechaFin || new Date(),
+        },
+      },
+      orderBy: {
+        fechaHora: 'asc',
+      },
+    });
+  }
+
   async procesarRegistroGps(registroGps: RegistroGps) {
     if (!registroGps.idRuta) {
       return {

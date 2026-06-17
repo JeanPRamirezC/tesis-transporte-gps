@@ -56,6 +56,7 @@ type Incidente = {
 
 type Props = {
   shape?: Punto[];
+  previewShape?: Punto[];
   paradas?: Parada[];
   unidades?: Unidad[];
   incidentes?: Incidente[];
@@ -73,6 +74,7 @@ const EMPTY_ARRAY: any[] = [];
 
 export function MapaInteractivo({
   shape = EMPTY_ARRAY,
+  previewShape = EMPTY_ARRAY,
   paradas = EMPTY_ARRAY,
   unidades = EMPTY_ARRAY,
   incidentes = EMPTY_ARRAY,
@@ -226,6 +228,28 @@ export function MapaInteractivo({
                   path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                   scale: 3,
                   strokeColor: '#1d4ed8',
+                },
+                offset: '0%',
+                repeat: '100px',
+              },
+            ] : [],
+          }}
+        />
+
+        {/* Preview Route shape / Trajectory for admins */}
+        <Polyline
+          path={previewShape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
+          options={{
+            strokeColor: '#10b981', // Emerald/green for preview
+            strokeOpacity: previewShape.length > 0 ? 0.9 : 0,
+            strokeWeight: 5,
+            visible: previewShape.length > 0,
+            icons: previewShape.length > 0 ? [
+              {
+                icon: {
+                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 2.5,
+                  strokeColor: '#047857', // Darker green arrows
                 },
                 offset: '0%',
                 repeat: '100px',

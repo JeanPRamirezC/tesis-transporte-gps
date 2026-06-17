@@ -35,15 +35,27 @@ export class TrayectoriasController {
     return this.trayectoriasService.obtenerTrayectoriaPorId(id);
   }
 
+  @Get(':id/puntos')
+  @ApiOperation({
+    summary: 'Obtener los registros GPS de una trayectoria.',
+  })
+  @ApiParam({
+    name: 'id',
+    example: 1,
+  })
+  obtenerPuntosGps(@Param('id', ParseIntPipe) id: number) {
+    return this.trayectoriasService.obtenerPuntosGps(id);
+  }
+
   @Get('ruta/:idRuta/validas')
-@ApiOperation({
-  summary: 'Listar trayectorias completadas útiles para visualización por ruta.',
-})
-@ApiParam({
-  name: 'idRuta',
-  example: 7,
-})
-listarTrayectoriasValidasPorRuta(@Param('idRuta', ParseIntPipe) idRuta: number) {
-  return this.trayectoriasService.listarTrayectoriasValidasPorRuta(idRuta);
-}
+  @ApiOperation({
+    summary: 'Listar trayectorias completadas útiles para visualización por ruta.',
+  })
+  @ApiParam({
+    name: 'idRuta',
+    example: 7,
+  })
+  listarTrayectoriasValidasPorRuta(@Param('idRuta', ParseIntPipe) idRuta: number) {
+    return this.trayectoriasService.listarTrayectoriasValidasPorRuta(idRuta);
+  }
 }
