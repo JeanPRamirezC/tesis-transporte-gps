@@ -296,4 +296,111 @@ async obtenerCoberturaPorRuta(idRuta: number) {
     tramos,
   };
 }
+
+  async reconstruirTiemposTramoTrayectoria(idTrayectoria: number): Promise<void> {
+    const trayectoria = await this.prisma.trayectoria.findUnique({
+      where: { idTrayectoria },
+    });
+    if (!trayectoria || !trayectoria.fechaFin) return;
+
+    const rutaParadas = await this.prisma.rutaParada.findMany({
+      where: { idRuta: trayectoria.idRuta },
+      include: { parada: true },
+      orderBy: { ordenParada: 'asc' },
+    });
+
+    const gpsRecords = await this.prisma.registroGps.findMany({
+      where: {
+        idUnidad: trayectoria.idUnidad,
+        idRuta: trayectoria.idRuta,
+        esOperativo: true,
+        fechaHora: {
+          gte: trayectoria.fechaInicio,
+          lte: trayectoria.fechaFin,
+        },
+      },
+      orderBy: {
+        fechaHora: 'asc',
+      },
+    });
+
+    if (gpsRecords.length === 0) return;
+
+    const pasoTiempos: { [key: number]: Date } = {};
+    let ultimoGpsIndex = 0;
+
+    for (const rp of rutaParadas) {
+      const latParada = Number(rp.parada.latitud);
+      const lngParada = Number(rp.parada.longitud);
+
+      let minDistance = Infinity;
+      let closestPing: any = null;
+      let closestIndex = -1;
+
+      for (let j = ultimoGpsIndex; j < gpsRecords.length; j++) {
+        const gps = gpsRecords[j];
+        const dist = calcularDistanciaMetros(
+          Number(gps.latitud),
+          Number(gps.longitud),
+          latParada,
+          lngParada,
+        );
+
+        if (dist <= 150) {
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestPing = gps;
+            closestIndex = j;
+          }
+        } else if (closestPing && dist > 250) {
+          break;
+        }
+      }
+
+      if (closestPing) {
+        pasoTiempos[rp.parada.idParada] = closestPing.fechaHora;
+        ultimoGpsIndex = closestIndex;
+      }
+    }
+
+    for (let i = 0; i < rutaParadas.length - 1; i++) {
+      const origen = rutaParadas[i];
+      const destino = rutaParadas[i + 1];
+
+      const tOrigen = pasoTiempos[origen.parada.idParada];
+      const tDestino = pasoTiempos[destino.parada.idParada];
+
+      if (tOrigen && tDestino) {
+        const duracionSegundos = Math.round(
+          (tDestino.getTime() - tOrigen.getTime()) / 1000,
+        );
+
+        if (duracionSegundos > 0 && duracionSegundos <= 1200) {
+          const existe = await this.prisma.tiempoTramo.findFirst({
+            where: {
+              idUnidad: trayectoria.idUnidad,
+              idRuta: trayectoria.idRuta,
+              idParadaOrigen: origen.parada.idParada,
+              idParadaDestino: destino.parada.idParada,
+              fechaHoraOrigen: tOrigen,
+            },
+          });
+
+          if (!existe) {
+            await this.prisma.tiempoTramo.create({
+              data: {
+                idUnidad: trayectoria.idUnidad,
+                idRuta: trayectoria.idRuta,
+                idParadaOrigen: origen.parada.idParada,
+                idParadaDestino: destino.parada.idParada,
+                fechaHoraOrigen: tOrigen,
+                fechaHoraDestino: tDestino,
+                duracionSegundos,
+              },
+            });
+          }
+        }
+      }
+    }
+  }
 }

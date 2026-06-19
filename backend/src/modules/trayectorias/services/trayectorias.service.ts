@@ -4,10 +4,14 @@ import { calcularDistanciaMetros } from '../../../common/utils/geo.util';
 import { PrismaService } from '../../../database/prisma.service';
 import { toZonedTime } from 'date-fns-tz';
 import { ECUADOR_TIMEZONE } from '../../../common/constants/timezone.constants';
+import { TiemposTramoService } from '../../tiempos-tramo/services/tiempos-tramo.service';
 
 @Injectable()
 export class TrayectoriasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tiemposTramoService: TiemposTramoService,
+  ) {}
 
   async listarTrayectorias() {
     return this.prisma.trayectoria.findMany({
@@ -287,6 +291,8 @@ export class TrayectoriasService {
                 motivoCierre: 'Llegada al punto final de la ruta.',
               },
             });
+
+            await this.tiemposTramoService.reconstruirTiemposTramoTrayectoria(trayectoriaCerrada.idTrayectoria);
 
             return {
               accion: 'TRAYECTORIA_COMPLETADA',
