@@ -24,9 +24,6 @@ export class GtfsController {
   }
 
   @Get('exportar')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(RolUsuario.ADMIN)
   @ApiOperation({
     summary: 'Generar y descargar el archivo comprimido gtfs.zip con el feed estático.',
   })
