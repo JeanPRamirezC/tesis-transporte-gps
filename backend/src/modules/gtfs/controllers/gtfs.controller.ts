@@ -8,14 +8,14 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { RolUsuario } from '@prisma/client';
 
 @ApiTags('GTFS')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(RolUsuario.ADMIN)
 @Controller('gtfs')
 export class GtfsController {
   constructor(private readonly gtfsService: GtfsService) {}
 
   @Get('preview')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN)
   @ApiOperation({
     summary: 'Obtener un diagnóstico del estado de los datos para la generación del GTFS.',
   })
@@ -24,6 +24,9 @@ export class GtfsController {
   }
 
   @Get('exportar')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN)
   @ApiOperation({
     summary: 'Generar y descargar el archivo comprimido gtfs.zip con el feed estático.',
   })
@@ -37,5 +40,31 @@ export class GtfsController {
     });
 
     res.end(zipBuffer);
+  }
+
+  @Get('realtime/vehicle-positions')
+  @ApiOperation({
+    summary: 'Obtener el feed dinámico de posiciones de vehículos (GTFS-Realtime).',
+  })
+  async obtenerVehiclePositions(@Res() res: Response) {
+    const buffer = await this.gtfsService.generarVehiclePositions();
+    res.set({
+      'Content-Type': 'application/x-protobuf',
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Get('realtime/trip-updates')
+  @ApiOperation({
+    summary: 'Obtener el feed dinámico de actualización de viajes (GTFS-Realtime).',
+  })
+  async obtenerTripUpdates(@Res() res: Response) {
+    const buffer = await this.gtfsService.generarTripUpdates();
+    res.set({
+      'Content-Type': 'application/x-protobuf',
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 }

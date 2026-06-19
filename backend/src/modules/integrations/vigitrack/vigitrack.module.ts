@@ -13,5 +13,6 @@ import { ReportesModule } from '../../reportes/reportes.module';
   imports: [HttpModule, TrayectoriasModule, TiemposTramoModule, EtaModule, ReportesModule],
   controllers: [VigitrackController],
   providers: [VigitrackService, VigitrackSchedulerService],
+  exports: [VigitrackService],
 })
 export class VigitrackModule {}

@@ -3,10 +3,17 @@ import { PrismaService } from '../../../database/prisma.service';
 import { GTFS_ROUTE_SCHEDULES } from '../constants/schedules.constants';
 import { timeStringToSeconds, secondsToTimeString, toTitleCase } from '../utils/time.util';
 import AdmZip = require('adm-zip');
+import { transit_realtime } from 'gtfs-realtime-bindings';
+import { VigitrackService } from '../../integrations/vigitrack/services/vigitrack.service';
+import { EtaService } from '../../eta/services/eta.service';
 
 @Injectable()
 export class GtfsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly vigitrackService: VigitrackService,
+    private readonly etaService: EtaService,
+  ) {}
 
   private escapeCsv(str: string): string {
     const stringified = String(str ?? '');
@@ -249,4 +256,202 @@ export class GtfsService {
 
     return zip.toBuffer();
   }
+
+  async generarVehiclePositions(): Promise<Buffer> {
+    await this.vigitrackService.sincronizarMonitoreoConCooldown();
+
+    const ahora = new Date();
+    const inicioDia = new Date(ahora);
+    inicioDia.setHours(0, 0, 0, 0);
+
+    const trayectoriasActivas = await this.prisma.trayectoria.findMany({
+      where: {
+        estado: 'EN_CURSO',
+        fechaInicio: {
+          gte: inicioDia,
+        },
+      },
+      include: {
+        unidad: true,
+        ruta: true,
+      },
+    });
+
+    const header = transit_realtime.FeedHeader.create({
+      gtfsRealtimeVersion: '2.0',
+      incrementality: transit_realtime.FeedHeader.Incrementality.FULL_DATASET,
+      timestamp: Math.round(ahora.getTime() / 1000),
+    });
+
+    const entities: transit_realtime.FeedEntity[] = [];
+
+    const formatEC = new Intl.DateTimeFormat('es-EC', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    for (const t of trayectoriasActivas) {
+      const gps = await this.prisma.registroGps.findFirst({
+        where: {
+          idUnidad: t.idUnidad,
+          esOperativo: true,
+          fechaHora: {
+            gte: inicioDia,
+          },
+        },
+        orderBy: {
+          fechaHora: 'desc',
+        },
+      });
+
+      if (!gps) continue;
+
+      const parts = formatEC.formatToParts(t.fechaInicio);
+      const partMap = new Map(parts.map(p => [p.type, p.value]));
+      const yyyymmdd = `${partMap.get('year')}${partMap.get('month')}${partMap.get('day')}`;
+      const hhmmss = `${partMap.get('hour')}${partMap.get('minute')}${partMap.get('second')}`;
+      const tripId = `ADD_${t.ruta.codigoRuta}_${t.unidad.codigoUnidad}_${yyyymmdd}_${hhmmss}`;
+
+      const entity = transit_realtime.FeedEntity.create({
+        id: `vehicle_${t.idTrayectoria}`,
+        vehicle: transit_realtime.VehiclePosition.create({
+          trip: transit_realtime.TripDescriptor.create({
+            tripId,
+            routeId: String(t.idRuta),
+            scheduleRelationship: transit_realtime.TripDescriptor.ScheduleRelationship.ADDED,
+          }),
+          position: transit_realtime.Position.create({
+            latitude: Number(gps.latitud),
+            longitude: Number(gps.longitud),
+            bearing: gps.rumbo ? Number(gps.rumbo) : undefined,
+            speed: gps.velocidad ? Number(gps.velocidad) / 3.6 : undefined,
+          }),
+          timestamp: Math.round(gps.fechaHora.getTime() / 1000),
+          vehicle: transit_realtime.VehicleDescriptor.create({
+            id: t.unidad.codigoUnidad,
+            label: t.unidad.placa ?? t.unidad.codigoUnidad,
+          }),
+        }),
+      });
+
+      entities.push(entity);
+    }
+
+    const message = transit_realtime.FeedMessage.create({
+      header,
+      entity: entities,
+    });
+
+    return Buffer.from(transit_realtime.FeedMessage.encode(message).finish());
+  }
+
+  async generarTripUpdates(): Promise<Buffer> {
+    await this.vigitrackService.sincronizarMonitoreoConCooldown();
+
+    const ahora = new Date();
+    const inicioDia = new Date(ahora);
+    inicioDia.setHours(0, 0, 0, 0);
+
+    const trayectoriasActivas = await this.prisma.trayectoria.findMany({
+      where: {
+        estado: 'EN_CURSO',
+        fechaInicio: {
+          gte: inicioDia,
+        },
+      },
+      include: {
+        unidad: true,
+        ruta: true,
+      },
+    });
+
+    const header = transit_realtime.FeedHeader.create({
+      gtfsRealtimeVersion: '2.0',
+      incrementality: transit_realtime.FeedHeader.Incrementality.FULL_DATASET,
+      timestamp: Math.round(ahora.getTime() / 1000),
+    });
+
+    const entities: transit_realtime.FeedEntity[] = [];
+
+    const formatEC = new Intl.DateTimeFormat('es-EC', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const idsRutasUnicas = Array.from(new Set(trayectoriasActivas.map(t => t.idRuta)));
+    const mapaEtasPorRuta = new Map<number, any>();
+
+    for (const idRuta of idsRutasUnicas) {
+      try {
+        const res = await this.etaService.calcularEtaPorRuta(idRuta);
+        mapaEtasPorRuta.set(idRuta, res);
+      } catch (e) {
+        // Ignorar errores de ruta sin paradas
+      }
+    }
+
+    for (const t of trayectoriasActivas) {
+      const rutaEtas = mapaEtasPorRuta.get(t.idRuta);
+      if (!rutaEtas || !rutaEtas.unidades) continue;
+
+      const unitEta = rutaEtas.unidades.find((u: any) => u.idUnidad === t.idUnidad);
+      if (!unitEta || !unitEta.etas || unitEta.etas.length === 0) continue;
+
+      const parts = formatEC.formatToParts(t.fechaInicio);
+      const partMap = new Map(parts.map(p => [p.type, p.value]));
+      const yyyymmdd = `${partMap.get('year')}${partMap.get('month')}${partMap.get('day')}`;
+      const hhmmss = `${partMap.get('hour')}${partMap.get('minute')}${partMap.get('second')}`;
+      const tripId = `ADD_${t.ruta.codigoRuta}_${t.unidad.codigoUnidad}_${yyyymmdd}_${hhmmss}`;
+
+      const stopTimeUpdates = unitEta.etas.map((eta: any) => {
+        const etaTimestamp = Math.round(ahora.getTime() / 1000) + eta.etaSegundos;
+
+        return transit_realtime.TripUpdate.StopTimeUpdate.create({
+          stopSequence: eta.ordenParada,
+          stopId: String(eta.idParada),
+          arrival: transit_realtime.TripUpdate.StopTimeEvent.create({
+            time: etaTimestamp,
+          }),
+          departure: transit_realtime.TripUpdate.StopTimeEvent.create({
+            time: etaTimestamp,
+          }),
+        });
+      });
+
+      const entity = transit_realtime.FeedEntity.create({
+        id: `trip_update_${t.idTrayectoria}`,
+        tripUpdate: transit_realtime.TripUpdate.create({
+          trip: transit_realtime.TripDescriptor.create({
+            tripId,
+            routeId: String(t.idRuta),
+            scheduleRelationship: transit_realtime.TripDescriptor.ScheduleRelationship.ADDED,
+          }),
+          stopTimeUpdate: stopTimeUpdates,
+          timestamp: Math.round(ahora.getTime() / 1000),
+        }),
+      });
+
+      entities.push(entity);
+    }
+
+    const message = transit_realtime.FeedMessage.create({
+      header,
+      entity: entities,
+    });
+
+    return Buffer.from(transit_realtime.FeedMessage.encode(message).finish());
+  }
 }
+

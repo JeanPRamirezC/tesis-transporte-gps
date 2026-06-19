@@ -35,6 +35,8 @@ export class VigitrackService {
   private readonly monitoreoUrl =
   'https://apismart7bus.vigitracklatam.com/monitoring28SeptiembreSIU';
 
+  private ultimoSyncTime = 0;
+
   constructor(
   private readonly httpService: HttpService,
   private readonly prisma: PrismaService,
@@ -139,6 +141,19 @@ async sincronizarMonitoreo() {
     total: registros.length,
     registros,
   };
+}
+
+async sincronizarMonitoreoConCooldown(): Promise<void> {
+  const ahora = Date.now();
+  if (ahora - this.ultimoSyncTime > 20000) {
+    this.ultimoSyncTime = ahora;
+    this.sincronizarMonitoreo().catch((err) => {
+      this.logger.error(
+        `Error en sincronización automática en segundo plano: ${err.message}`,
+        err.stack,
+      );
+    });
+  }
 }
 
 private async obtenerMonitoreoDesdeProveedor(): Promise<VigitrackMonitoreo[]> {
