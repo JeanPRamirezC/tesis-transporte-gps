@@ -103,6 +103,7 @@ export default function HomePage() {
   const [itinerarioSeleccionado, setItinerarioSeleccionado] = useState<Itinerario | null>(null);
   const [cargandoPlanner, setCargandoPlanner] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
+  const [excluirEspera, setExcluirEspera] = useState(false);
 
   // Map Mode and Interaction States
   const [mapMode, setMapMode] = useState<'view' | 'set-origin' | 'set-destination' | 'report'>('view');
@@ -265,6 +266,7 @@ export default function HomePage() {
           destinoLat,
           destinoLon,
           maxCaminataMetros: maxCaminata,
+          excluirEspera: excluirEspera,
         },
       });
       setItinerarios(res.data);
@@ -318,6 +320,7 @@ export default function HomePage() {
     setItinerarioSeleccionado(null);
     setPlannerError(null);
     setSelectedRouteData(null);
+    setExcluirEspera(false);
   };
 
   const getTextoIncidente = (tipo: string) => {
@@ -516,6 +519,19 @@ export default function HomePage() {
                         <option value="1200">1.2 km</option>
                         <option value="2000">2.0 km</option>
                       </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="excluirEspera"
+                        checked={excluirEspera}
+                        onChange={(e) => setExcluirEspera(e.target.checked)}
+                        className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                      />
+                      <label htmlFor="excluirEspera" className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer select-none">
+                        Calcular sin tiempo de espera (prueba)
+                      </label>
                     </div>
 
                     <div className="flex gap-2 pt-2">

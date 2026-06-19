@@ -133,6 +133,7 @@ export class PlanificadorService {
     destinoLat: number,
     destinoLon: number,
     maxCaminataMetros: number = 800,
+    excluirEspera: boolean = false,
   ): Promise<Itinerario[]> {
     const VELOCIDAD_CAMINATA_MPS = 1.39; // 5 km/h
     const TIEMPO_ESPERA_ESTIMADO_SEG = 240; // 4 minutos de espera en parada
@@ -256,33 +257,6 @@ export class PlanificadorService {
               ? (idxDestino - idxOrigen)
               : (ruta.rutaParadas.length - idxOrigen + idxDestino);
 
-            // Calcular ETA en tiempo real o fallback
-            const etasRuta = await getEtasRuta(ruta.idRuta);
-            let tiempoEsperaSegundos = 300; // Fallback 5 minutos
-            let busActivo = false;
-            let codigoBus: string | null = null;
-
-            if (etasRuta && etasRuta.unidades && etasRuta.unidades.length > 0) {
-              let minEta = Infinity;
-              let bestUnit = null;
-
-              for (const u of etasRuta.unidades) {
-                const etaItem = u.etas.find((e: any) => e.idParada === po.parada.idParada);
-                if (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) {
-                  if (etaItem.etaSegundos < minEta) {
-                    minEta = etaItem.etaSegundos;
-                    bestUnit = u;
-                  }
-                }
-              }
-
-              if (bestUnit && minEta !== Infinity) {
-                tiempoEsperaSegundos = minEta;
-                busActivo = true;
-                codigoBus = bestUnit.codigoUnidad;
-              }
-            }
-
             const tiempoWalk1 = po.distancia / VELOCIDAD_CAMINATA_MPS;
             const tiempoViajeBus = this.calcularTiempoRuta(
               ruta,
@@ -291,6 +265,43 @@ export class PlanificadorService {
               mapaPromedios,
             );
             const tiempoWalk2 = pd.distancia / VELOCIDAD_CAMINATA_MPS;
+
+            // Calcular ETA en tiempo real o fallback
+            const etasRuta = await getEtasRuta(ruta.idRuta);
+            let tiempoEsperaSegundos = 300; // Fallback 5 minutos
+            let busActivo = false;
+            let codigoBus: string | null = null;
+
+            if (excluirEspera) {
+              tiempoEsperaSegundos = 0;
+            } else if (etasRuta && etasRuta.unidades && etasRuta.unidades.length > 0) {
+              // Obtener todos los buses y sus ETAs válidos a esta parada
+              const unitsWithEta = etasRuta.unidades
+                .map((u: any) => {
+                  const etaItem = u.etas.find((e: any) => e.idParada === po.parada.idParada);
+                  return {
+                    unidad: u,
+                    etaSegundos: (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) ? etaItem.etaSegundos : null
+                  };
+                })
+                .filter((item: any) => item.etaSegundos !== null)
+                .sort((a: any, b: any) => a.etaSegundos - b.etaSegundos);
+
+              // Buscar la primera unidad que llega a la parada DESPUÉS de que el usuario llegue caminando
+              const catchableUnit = unitsWithEta.find((item: any) => item.etaSegundos >= tiempoWalk1);
+
+              if (catchableUnit) {
+                // El tiempo de espera es la diferencia entre cuando llega el bus y cuando llega el usuario
+                tiempoEsperaSegundos = catchableUnit.etaSegundos - tiempoWalk1;
+                busActivo = true;
+                codigoBus = catchableUnit.unidad.codigoUnidad;
+              } else {
+                tiempoEsperaSegundos = 300;
+                busActivo = false;
+                codigoBus = null;
+              }
+            }
+
             const tiempoTotal =
               tiempoWalk1 +
               tiempoViajeBus +
@@ -420,60 +431,6 @@ export class PlanificadorService {
                       ? (idxD_r2 - j)
                       : (r2.rutaParadas.length - j + idxD_r2);
 
-                    // Calcular ETA en tiempo real o fallback para R1
-                    const etasR1 = await getEtasRuta(r1.idRuta);
-                    let tiempoEsperaR1 = 300; // Fallback 5 min
-                    let busActivoR1 = false;
-                    let codigoBusR1: string | null = null;
-
-                    if (etasR1 && etasR1.unidades && etasR1.unidades.length > 0) {
-                      let minEta = Infinity;
-                      let bestUnit = null;
-
-                      for (const u of etasR1.unidades) {
-                        const etaItem = u.etas.find((e: any) => e.idParada === po.parada.idParada);
-                        if (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) {
-                          if (etaItem.etaSegundos < minEta) {
-                            minEta = etaItem.etaSegundos;
-                            bestUnit = u;
-                          }
-                        }
-                      }
-
-                      if (bestUnit && minEta !== Infinity) {
-                        tiempoEsperaR1 = minEta;
-                        busActivoR1 = true;
-                        codigoBusR1 = bestUnit.codigoUnidad;
-                      }
-                    }
-
-                    // Calcular ETA en tiempo real o fallback para R2
-                    const etasR2 = await getEtasRuta(r2.idRuta);
-                    let tiempoEsperaR2 = 300; // Fallback 5 min
-                    let busActivoR2 = false;
-                    let codigoBusR2: string | null = null;
-
-                    if (etasR2 && etasR2.unidades && etasR2.unidades.length > 0) {
-                      let minEta = Infinity;
-                      let bestUnit = null;
-
-                      for (const u of etasR2.unidades) {
-                        const etaItem = u.etas.find((e: any) => e.idParada === pt2.idParada);
-                        if (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) {
-                          if (etaItem.etaSegundos < minEta) {
-                            minEta = etaItem.etaSegundos;
-                            bestUnit = u;
-                          }
-                        }
-                      }
-
-                      if (bestUnit && minEta !== Infinity) {
-                        tiempoEsperaR2 = minEta;
-                        busActivoR2 = true;
-                        codigoBusR2 = bestUnit.codigoUnidad;
-                      }
-                    }
-
                     const tiempoWalk1 = po.distancia / VELOCIDAD_CAMINATA_MPS;
                     const tiempoBus1 = this.calcularTiempoRuta(
                       r1,
@@ -489,6 +446,74 @@ export class PlanificadorService {
                       mapaPromedios,
                     );
                     const tiempoWalk2 = pd.distancia / VELOCIDAD_CAMINATA_MPS;
+
+                    // Calcular ETA en tiempo real o fallback para R1
+                    const etasR1 = await getEtasRuta(r1.idRuta);
+                    let tiempoEsperaR1 = 300; // Fallback 5 min
+                    let busActivoR1 = false;
+                    let codigoBusR1: string | null = null;
+
+                    if (excluirEspera) {
+                      tiempoEsperaR1 = 0;
+                    } else if (etasR1 && etasR1.unidades && etasR1.unidades.length > 0) {
+                      const unitsWithEta1 = etasR1.unidades
+                        .map((u: any) => {
+                          const etaItem = u.etas.find((e: any) => e.idParada === po.parada.idParada);
+                          return {
+                            unidad: u,
+                            etaSegundos: (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) ? etaItem.etaSegundos : null
+                          };
+                        })
+                        .filter((item: any) => item.etaSegundos !== null)
+                        .sort((a: any, b: any) => a.etaSegundos - b.etaSegundos);
+
+                      const catchableUnit1 = unitsWithEta1.find((item: any) => item.etaSegundos >= tiempoWalk1);
+
+                      if (catchableUnit1) {
+                        tiempoEsperaR1 = catchableUnit1.etaSegundos - tiempoWalk1;
+                        busActivoR1 = true;
+                        codigoBusR1 = catchableUnit1.unidad.codigoUnidad;
+                      } else {
+                        tiempoEsperaR1 = 300;
+                        busActivoR1 = false;
+                        codigoBusR1 = null;
+                      }
+                    }
+
+                    // Calcular ETA en tiempo real o fallback para R2
+                    const etasR2 = await getEtasRuta(r2.idRuta);
+                    let tiempoEsperaR2 = 300; // Fallback 5 min
+                    let busActivoR2 = false;
+                    let codigoBusR2: string | null = null;
+
+                    const tiempoLlegadaR2 = tiempoWalk1 + tiempoEsperaR1 + tiempoBus1 + tiempoWalkTransfer;
+
+                    if (excluirEspera) {
+                      tiempoEsperaR2 = 0;
+                    } else if (etasR2 && etasR2.unidades && etasR2.unidades.length > 0) {
+                      const unitsWithEta2 = etasR2.unidades
+                        .map((u: any) => {
+                          const etaItem = u.etas.find((e: any) => e.idParada === pt2.idParada);
+                          return {
+                            unidad: u,
+                            etaSegundos: (etaItem && etaItem.etaSegundos !== null && etaItem.etaSegundos > 0) ? etaItem.etaSegundos : null
+                          };
+                        })
+                        .filter((item: any) => item.etaSegundos !== null)
+                        .sort((a: any, b: any) => a.etaSegundos - b.etaSegundos);
+
+                      const catchableUnit2 = unitsWithEta2.find((item: any) => item.etaSegundos >= tiempoLlegadaR2);
+
+                      if (catchableUnit2) {
+                        tiempoEsperaR2 = catchableUnit2.etaSegundos - tiempoLlegadaR2;
+                        busActivoR2 = true;
+                        codigoBusR2 = catchableUnit2.unidad.codigoUnidad;
+                      } else {
+                        tiempoEsperaR2 = 300;
+                        busActivoR2 = false;
+                        codigoBusR2 = null;
+                      }
+                    }
 
                     const tiempoTotal =
                       tiempoWalk1 +

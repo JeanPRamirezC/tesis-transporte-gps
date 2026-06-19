@@ -22,12 +22,19 @@ export class PlanificadorController {
     required: false,
     description: 'Distancia máxima que el usuario está dispuesto a caminar a pie en metros (Default: 800m).',
   })
+  @ApiQuery({
+    name: 'excluirEspera',
+    type: Boolean,
+    required: false,
+    description: 'Excluir el tiempo de espera del bus en el cálculo (para fase de prueba sin bus).',
+  })
   async planificar(
     @Query('origenLat') origenLatStr: string,
     @Query('origenLon') origenLonStr: string,
     @Query('destinoLat') destinoLatStr: string,
     @Query('destinoLon') destinoLonStr: string,
     @Query('maxCaminataMetros') maxCaminataStr?: string,
+    @Query('excluirEspera') excluirEsperaStr?: string,
   ) {
     const origenLat = parseFloat(origenLatStr);
     const origenLon = parseFloat(origenLonStr);
@@ -49,12 +56,15 @@ export class PlanificadorController {
       ? parseFloat(maxCaminataStr) 
       : 800;
 
+    const excluirEspera = excluirEsperaStr === 'true';
+
     return this.planificadorService.planificarViaje(
       origenLat,
       origenLon,
       destinoLat,
       destinoLon,
       maxCaminataMetros,
+      excluirEspera,
     );
   }
 }
