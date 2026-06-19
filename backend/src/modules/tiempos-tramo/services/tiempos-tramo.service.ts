@@ -270,6 +270,15 @@ async obtenerCoberturaPorRuta(idRuta: number) {
     const clave = `${origen.idParada}-${destino.idParada}`;
     const historico = mapaPromedios.get(clave);
 
+    const distanciaMetros = Math.round(
+      calcularDistanciaMetros(
+        Number(origen.parada.latitud),
+        Number(origen.parada.longitud),
+        Number(destino.parada.latitud),
+        Number(destino.parada.longitud),
+      ),
+    );
+
     tramos.push({
       ordenOrigen: origen.ordenParada,
       paradaOrigen: origen.parada.nombreParada,
@@ -278,6 +287,7 @@ async obtenerCoberturaPorRuta(idRuta: number) {
       tieneHistorico: Boolean(historico),
       promedioSegundos: historico?.promedio ?? null,
       muestras: historico?.muestras ?? 0,
+      distanciaMetros,
     });
   }
 

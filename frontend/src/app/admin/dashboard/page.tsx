@@ -1088,15 +1088,15 @@ export default function AdminDashboardPage() {
 
         </div>
 
-        {/* COBERTURA Y CONGESTIÓN DE TRAMOS */}
+        {/* COBERTURA Y PRIORIDAD DE PARADAS */}
         {selectedRutaId && coberturaData && (
           <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3 mb-4">
               <div>
                 <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
-                  <span>🛣️</span> Cobertura Histórica y Congestión por Tramos de Ruta
+                  <span>🛣️</span> Cobertura Histórica y Prioridad de Paradas por Tramo
                 </h2>
-                <p className="text-[11px] text-zinc-400">Análisis comparativo de tráfico real vs óptimo por segmento.</p>
+                <p className="text-[11px] text-zinc-400">Análisis de distancia y duración operativa para identificar brechas de infraestructura.</p>
               </div>
               <span className="rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-450 px-2.5 py-1 text-xs font-bold font-mono">
                 Cobertura: {coberturaData.porcentajeCobertura}%
@@ -1123,27 +1123,70 @@ export default function AdminDashboardPage() {
                 <thead>
                   <tr className="border-b border-zinc-100 dark:border-zinc-800 text-zinc-400 font-bold">
                     <th className="pb-2">Tramo (Origen → Destino)</th>
+                    <th className="pb-2 text-center">Distancia Geográfica</th>
                     <th className="pb-2 text-center">Duración Promedio</th>
                     <th className="pb-2 text-center">Muestras</th>
-                    <th className="pb-2 text-right">Estado Tránsito</th>
+                    <th className="pb-2 text-right font-bold text-zinc-700 dark:text-zinc-350">Prioridad Nueva Parada</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
                   {coberturaData.tramos?.map((tramo: any, idx: number) => {
-                    let statusLabel = 'Sin datos';
-                    let statusColor = 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400';
+                    const dist = tramo.distanciaMetros || 0;
                     
+                    // 1. Clasificación por Distancia
+                    let distLabel = 'Cercana';
+                    let distBadgeColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-450 border border-emerald-250/20';
+                    if (dist > 800) {
+                      distLabel = 'Lejana';
+                      distBadgeColor = 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border border-red-300/20 font-bold';
+                    } else if (dist > 400) {
+                      distLabel = 'Mediana';
+                      distBadgeColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-300/20';
+                    }
+
+                    // 2. Clasificación por Tiempo
+                    let timeLabel = '90s (Estimado ⚠️)';
+                    let timeBadgeColor = 'bg-zinc-50 text-zinc-500 dark:bg-zinc-950/20 dark:text-zinc-400 font-mono';
+                    let isEstimated = true;
+
                     if (tramo.tieneHistorico && tramo.promedioSegundos) {
+                      isEstimated = false;
                       const avg = tramo.promedioSegundos;
-                      if (avg <= 110) {
-                        statusLabel = 'Tránsito Fluido 🟢';
-                        statusColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-450 font-bold';
-                      } else if (avg <= 200) {
-                        statusLabel = 'Moderado 🟡';
-                        statusColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 font-bold';
+                      if (avg <= 90) {
+                        timeLabel = 'Rápido';
+                        timeBadgeColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400';
+                      } else if (avg <= 180) {
+                        timeLabel = 'Normal';
+                        timeBadgeColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400';
                       } else {
-                        statusLabel = 'Congestión 🔴';
-                        statusColor = 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 font-extrabold animate-pulse';
+                        timeLabel = 'Lento';
+                        timeBadgeColor = 'bg-red-50 text-red-750 dark:bg-red-950/20 dark:text-red-400 font-semibold';
+                      }
+                    }
+
+                    // 3. Prioridad de Nueva Parada
+                    let priorityLabel = 'Baja Prioridad';
+                    let priorityColor = 'bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/10 dark:text-emerald-455';
+
+                    if (dist > 800) {
+                      if (!isEstimated && tramo.promedioSegundos > 180) {
+                        priorityLabel = 'Prioridad Alta 🔴';
+                        priorityColor = 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400 font-extrabold animate-pulse';
+                      } else {
+                        priorityLabel = isEstimated ? 'Prioridad Media 🟡 ⚠️' : 'Prioridad Media 🟡';
+                        priorityColor = 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 font-bold';
+                      }
+                    } else if (dist > 400) {
+                      if (!isEstimated && tramo.promedioSegundos > 180) {
+                        priorityLabel = 'Prioridad Media 🟡';
+                        priorityColor = 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 font-bold';
+                      } else {
+                        priorityLabel = isEstimated ? 'Baja Prioridad 🟢 ⚠️' : 'Baja Prioridad';
+                        priorityColor = 'bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/10 dark:text-emerald-455';
+                      }
+                    } else {
+                      if (isEstimated) {
+                        priorityLabel = 'Baja Prioridad 🟢 ⚠️';
                       }
                     }
 
@@ -1152,15 +1195,30 @@ export default function AdminDashboardPage() {
                         <td className="py-2.5 font-medium pr-2">
                           {tramo.ordenOrigen}. {tramo.paradaOrigen} <span className="text-zinc-400">→</span> {tramo.paradaDestino}
                         </td>
-                        <td className="py-2.5 text-center font-semibold text-zinc-900 dark:text-white">
-                          {tramo.promedioSegundos ? `${Math.round(tramo.promedioSegundos / 60)} min ${tramo.promedioSegundos % 60} seg` : 'N/A'}
+                        <td className="py-2.5 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-bold text-zinc-900 dark:text-white">{dist} m</span>
+                            <span className={`px-1.5 py-0.2 rounded-[4px] text-[9px] uppercase tracking-wide ${distBadgeColor}`}>
+                              {distLabel}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                              {tramo.promedioSegundos ? `${Math.round(tramo.promedioSegundos / 60)} min ${tramo.promedioSegundos % 60} seg` : '90 seg'}
+                            </span>
+                            <span className={`px-1.5 py-0.2 rounded-[4px] text-[9px] uppercase tracking-wide ${timeBadgeColor}`}>
+                              {timeLabel}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-2.5 text-center font-medium text-zinc-500 font-mono">
                           {tramo.muestras}
                         </td>
                         <td className="py-2.5 text-right">
-                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase ${statusColor}`}>
-                            {statusLabel}
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold tracking-wide shadow-xs ${priorityColor}`}>
+                            {priorityLabel}
                           </span>
                         </td>
                       </tr>
