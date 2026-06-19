@@ -17,6 +17,7 @@ import { PlanificadorModule } from './modules/planificador/planificador.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FavoritosModule } from './modules/favoritos/favoritos.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
+import { MetricasModule } from './modules/metricas/metricas.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ReportesModule } from './modules/reportes/reportes.module';
     AuthModule,
     FavoritosModule,
     ReportesModule,
+    MetricasModule,
   ],
 })
 export class AppModule {}

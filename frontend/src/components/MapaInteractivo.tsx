@@ -20,6 +20,7 @@ type Parada = {
   ordenParada: number;
   latitud: number;
   longitud: number;
+  esOmitida?: boolean;
 };
 
 type Unidad = {
@@ -345,17 +346,24 @@ export function MapaInteractivo({
           const esFinal = idx === paradas.length - 1;
           let iconUrl = 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png';
 
-          if (esInicio) iconUrl = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
-          else if (esFinal) iconUrl = 'http://maps.google.com/mapfiles/ms/icons/red-dot.png';
+          if (parada.esOmitida) {
+            iconUrl = 'http://maps.google.com/mapfiles/ms/icons/orange-dot.png';
+          } else if (esInicio) {
+            iconUrl = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
+          } else if (esFinal) {
+            iconUrl = 'http://maps.google.com/mapfiles/ms/icons/red-dot.png';
+          }
+
+          const size = parada.esOmitida || esInicio || esFinal ? 26 : 18;
 
           return (
             <Marker
               key={`parada-${parada.idParada}-${idx}`}
               position={{ lat: parada.latitud, lng: parada.longitud }}
-              title={`${parada.ordenParada}. ${parada.nombreParada}`}
+              title={`${parada.esOmitida ? '[OMITIDA] ' : ''}${parada.ordenParada}. ${parada.nombreParada}`}
               icon={{
                 url: iconUrl,
-                scaledSize: new google.maps.Size(esInicio || esFinal ? 28 : 18, esInicio || esFinal ? 28 : 18),
+                scaledSize: new google.maps.Size(size, size),
               }}
             />
           );

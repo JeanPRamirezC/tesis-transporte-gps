@@ -20,6 +20,13 @@ type Reporte = {
   usuario?: {
     email: string;
   };
+  asociacion?: {
+    idUnidad: number;
+    codigoUnidad: string;
+    placa: string | null;
+    distanciaMetros: number;
+    diferenciaTiempoSegundos: number;
+  } | null;
 };
 
 type Ruta = {
@@ -80,13 +87,28 @@ export default function AdminDashboardPage() {
   const [showOfficialLayer, setShowOfficialLayer] = useState(true);
   const [showPreviewLayer, setShowPreviewLayer] = useState(true);
 
+  // Thesis metrics states
+  const [productividadFecha, setProductividadFecha] = useState('');
+  const [productividadData, setProductividadData] = useState<any[]>([]);
+  const [loadingProductividad, setLoadingProductividad] = useState(false);
+  const [comparativaData, setComparativaData] = useState<any[]>([]);
+  const [loadingComparativa, setLoadingComparativa] = useState(false);
+  const [desviosData, setDesviosData] = useState<any | null>(null);
+  const [loadingDesvios, setLoadingDesvios] = useState(false);
+  const [coberturaData, setCoberturaData] = useState<any | null>(null);
+  const [loadingCobertura, setLoadingCobertura] = useState(false);
+
   useEffect(() => {
     if (selectedRutaId) {
       cargarDatosMapaRuta(parseInt(selectedRutaId));
+      fetchComparativaRuta(parseInt(selectedRutaId));
+      fetchCoberturaTramos(parseInt(selectedRutaId));
     } else {
       setAdminShapePoints([]);
       setAdminParadas([]);
       setAdminPreviewPoints([]);
+      setComparativaData([]);
+      setCoberturaData(null);
     }
   }, [selectedRutaId]);
 
@@ -129,6 +151,74 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchProductividad = async (fechaStr?: string) => {
+    try {
+      setLoadingProductividad(true);
+      const url = fechaStr ? `/metricas/unidades/productividad?fecha=${fechaStr}` : '/metricas/unidades/productividad';
+      const res = await api.get(url);
+      setProductividadData(res.data.unidades || []);
+      if (res.data.fecha) {
+        setProductividadFecha(res.data.fecha);
+      }
+    } catch (err) {
+      console.error('Error fetching productivity metrics:', err);
+    } finally {
+      setLoadingProductividad(false);
+    }
+  };
+
+  const fetchComparativaRuta = async (idRuta: number) => {
+    try {
+      setLoadingComparativa(true);
+      const res = await api.get(`/metricas/rutas/${idRuta}/comparativa`);
+      setComparativaData(res.data.comparativa || []);
+    } catch (err) {
+      console.error('Error fetching route comparison metrics:', err);
+      setComparativaData([]);
+    } finally {
+      setLoadingComparativa(false);
+    }
+  };
+
+  const fetchCoberturaTramos = async (idRuta: number) => {
+    try {
+      setLoadingCobertura(true);
+      const res = await api.get(`/tiempos-tramo/cobertura/ruta/${idRuta}`);
+      setCoberturaData(res.data);
+    } catch (err) {
+      console.error('Error fetching coverage metrics:', err);
+      setCoberturaData(null);
+    } finally {
+      setLoadingCobertura(false);
+    }
+  };
+
+  const fetchDesviosTrayectoria = async (idTrayectoria: number) => {
+    try {
+      setLoadingDesvios(true);
+      const res = await api.get(`/metricas/trayectorias/${idTrayectoria}/desvios`);
+      setDesviosData(res.data);
+      
+      // Update parada map pins to highlight omitted ones
+      if (res.data.omitidas && res.data.omitidas.length > 0) {
+        setAdminParadas((prev) => prev.map((p) => ({
+          ...p,
+          esOmitida: res.data.omitidas.includes(p.idParada),
+        })));
+      } else {
+        setAdminParadas((prev) => prev.map((p) => ({
+          ...p,
+          esOmitida: false,
+        })));
+      }
+    } catch (err) {
+      console.error('Error fetching trajectory deviations:', err);
+      setDesviosData(null);
+    } finally {
+      setLoadingDesvios(false);
+    }
+  };
+
   const fetchTrayectorias = async () => {
     try {
       setLoadingTrayectorias(true);
@@ -145,6 +235,7 @@ export default function AdminDashboardPage() {
     setSelectedTrayectoriaId(idVal);
     if (idVal === null) {
       setAdminPreviewPoints([]);
+      setDesviosData(null);
       return;
     }
     
@@ -153,6 +244,9 @@ export default function AdminDashboardPage() {
     if (trayect && trayect.idRuta) {
       setSelectedRutaId(trayect.idRuta.toString());
     }
+
+    // Load deviation metrics for this trajectory
+    fetchDesviosTrayectoria(idVal);
 
     // Immediately fetch points for previewing on the map
     try {
@@ -197,6 +291,7 @@ export default function AdminDashboardPage() {
       fetchRutas();
       fetchUnidadesActivas();
       fetchTrayectorias();
+      fetchProductividad();
     }
   }, [user]);
 
@@ -225,7 +320,7 @@ export default function AdminDashboardPage() {
   const fetchReportes = async () => {
     try {
       setLoadingReportes(true);
-      const res = await api.get('/reportes/todos');
+      const res = await api.get('/metricas/incidentes/asociaciones');
       setReportes(res.data);
     } catch (err) {
       console.error('Error fetching todos los reportes:', err);
@@ -513,6 +608,70 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
+        {/* KPIs de Productividad */}
+        <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-3 mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                <span>📈</span> KPIs de Productividad Individual por Bus (Eficiencia Diaria)
+              </h2>
+              <p className="text-[11px] text-zinc-400">Rendimiento diario acumulado de la flota en tiempo real.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-zinc-500">Filtrar Fecha:</label>
+              <input
+                type="date"
+                value={productividadFecha}
+                onChange={(e) => {
+                  setProductividadFecha(e.target.value);
+                  fetchProductividad(e.target.value);
+                }}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-800 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+              />
+            </div>
+          </div>
+
+          {loadingProductividad ? (
+            <p className="text-center py-6 text-xs text-zinc-400 animate-pulse">Cargando métricas de productividad...</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {productividadData.map((prod) => (
+                <div key={`prod-${prod.idUnidad}`} className="relative overflow-hidden rounded-2xl border border-zinc-100 bg-gradient-to-br from-white to-zinc-50/50 p-5 shadow-xs dark:border-zinc-800 dark:bg-zinc-900 dark:from-zinc-900 dark:to-zinc-950/50">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg">
+                      🚌 Unidad {prod.codigoUnidad}
+                    </span>
+                    <span className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 font-mono">
+                      {prod.placa || 'Sin Placa'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center pt-2">
+                    <div className="border-r border-zinc-100 dark:border-zinc-800 pr-1">
+                      <span className="block text-lg font-black text-zinc-900 dark:text-white">
+                        {prod.kilometrosRecorridos}
+                      </span>
+                      <span className="text-[9px] uppercase font-bold text-zinc-400">Kilómetros</span>
+                    </div>
+                    <div className="border-r border-zinc-105 dark:border-zinc-800 px-1">
+                      <span className="block text-lg font-black text-zinc-900 dark:text-white">
+                        {prod.horasOperativas}h
+                      </span>
+                      <span className="text-[9px] uppercase font-bold text-zinc-400">Hr. Trabajo</span>
+                    </div>
+                    <div className="pl-1">
+                      <span className="block text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        {prod.vueltasCompletadas}
+                      </span>
+                      <span className="text-[9px] uppercase font-bold text-zinc-400">Vueltas OK</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* UTILITIES PANEL + MAP GRID */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           
@@ -705,6 +864,135 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
+            {/* COMPARATIVA DE TIEMPOS DE VIAJE */}
+            {selectedRutaId && (
+              <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4">
+                <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider border-b pb-2 mb-4">
+                  ⏱️ Comparativa de Duración de Viaje (Últimos 7 días)
+                </h2>
+                
+                {loadingComparativa ? (
+                  <p className="text-xs text-zinc-400 animate-pulse py-4 text-center">Cargando comparativa...</p>
+                ) : comparativaData.length === 0 ? (
+                  <p className="text-xs text-zinc-400 italic py-4 text-center">No hay trayectorias completadas recientemente en esta ruta.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {comparativaData.map((comp) => {
+                      const maxVal = Math.max(...comparativaData.map(c => c.tiempoMaximoMinutos || 1), 1);
+                      
+                      const pctAvg = comp.totalViajes > 0 ? (comp.tiempoPromedioMinutos / maxVal) * 100 : 0;
+                      const pctMin = comp.totalViajes > 0 ? (comp.tiempoMinimoMinutos / maxVal) * 100 : 0;
+                      const pctMax = comp.totalViajes > 0 ? (comp.tiempoMaximoMinutos / maxVal) * 100 : 0;
+
+                      return (
+                        <div key={`comp-${comp.idUnidad}`} className="space-y-2 border-b border-zinc-100 dark:border-zinc-800/50 pb-3 last:border-0 last:pb-0">
+                          <div className="flex justify-between items-center text-xs font-semibold">
+                            <span className="font-bold text-zinc-800 dark:text-zinc-200">🚌 Bus {comp.codigoUnidad} ({comp.placa || 'S/P'})</span>
+                            <span className="text-[10px] text-zinc-450 dark:text-zinc-500">Viajes: <strong>{comp.totalViajes}</strong></span>
+                          </div>
+
+                          {comp.totalViajes > 0 ? (
+                            <div className="space-y-1.5">
+                              <div className="space-y-0.5">
+                                <div className="flex justify-between text-[9px] uppercase font-bold text-zinc-400">
+                                  <span>Promedio</span>
+                                  <span>{comp.tiempoPromedioMinutos} min</span>
+                                </div>
+                                <div className="h-2 w-full bg-zinc-100 rounded-full overflow-hidden dark:bg-zinc-800">
+                                  <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${pctAvg}%` }} />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-0.5">
+                                  <div className="flex justify-between text-[9px] uppercase font-bold text-zinc-500">
+                                    <span>Mínimo</span>
+                                    <span>{comp.tiempoMinimoMinutos} min</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden dark:bg-zinc-800">
+                                    <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pctMin}%` }} />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-0.5">
+                                  <div className="flex justify-between text-[9px] uppercase font-bold text-zinc-500">
+                                    <span>Máximo</span>
+                                    <span>{comp.tiempoMaximoMinutos} min</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden dark:bg-zinc-800">
+                                    <div className="h-full bg-red-500 rounded-full transition-all" style={{ width: `${pctMax}%` }} />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-zinc-400 italic">Sin registros de viajes completados.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AUDITORÍA Y DETECCION DE DESVIOS */}
+            {selectedTrayectoriaId && desviosData && (
+              <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4">
+                <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-2 mb-3">
+                  <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
+                    🚨 Desvíos y Paradas Omitidas: Trayectoria {selectedTrayectoriaId}
+                  </h2>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    desviosData.indiceCumplimiento >= 90
+                      ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400'
+                      : desviosData.indiceCumplimiento >= 75
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400'
+                      : 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400'
+                  }`}>
+                    Cumplimiento: {desviosData.indiceCumplimiento}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div className="rounded-xl bg-zinc-50 p-3 dark:bg-zinc-950/50">
+                    <span className="block text-[10px] font-bold text-zinc-400 uppercase">Puntos Chequeados</span>
+                    <span className="text-lg font-extrabold text-zinc-800 dark:text-white">{desviosData.totalPuntos}</span>
+                  </div>
+                  <div className="rounded-xl bg-zinc-50 p-3 dark:bg-zinc-950/50">
+                    <span className="block text-[10px] font-bold text-zinc-400 uppercase">Puntos Desviados (&gt;150m)</span>
+                    <span className={`text-lg font-extrabold ${desviosData.puntosDesviados > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      {desviosData.puntosDesviados}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                    Auditoría de Paradas (100m)
+                  </h3>
+                  <div className="max-h-[160px] overflow-y-auto rounded-xl border border-zinc-100 divide-y divide-zinc-100 dark:border-zinc-850 dark:divide-zinc-850/50 text-[11px]">
+                    {desviosData.paradasAnalizadas?.map((parada: any) => (
+                      <div key={`analisis-parada-${parada.idParada}`} className="flex justify-between items-center p-2">
+                        <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                          {parada.ordenParada}. {parada.nombreParada}
+                        </span>
+                        {parada.visitada ? (
+                          <span className="flex items-center gap-1 font-bold text-green-600 dark:text-green-400">
+                            🟢 Visitada
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 font-bold text-orange-500 dark:text-orange-400 animate-pulse">
+                            ⚠️ Omitida
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
 
           {/* INTERACTIVE PREVIEW MAP (Right, 5 cols) */}
@@ -784,6 +1072,90 @@ export default function AdminDashboardPage() {
           </div>
 
         </div>
+
+        {/* COBERTURA Y CONGESTIÓN DE TRAMOS */}
+        {selectedRutaId && coberturaData && (
+          <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3 mb-4">
+              <div>
+                <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <span>🛣️</span> Cobertura Histórica y Congestión por Tramos de Ruta
+                </h2>
+                <p className="text-[11px] text-zinc-400">Análisis comparativo de tráfico real vs óptimo por segmento.</p>
+              </div>
+              <span className="rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-450 px-2.5 py-1 text-xs font-bold font-mono">
+                Cobertura: {coberturaData.porcentajeCobertura}%
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 text-center text-xs">
+              <div className="rounded-xl bg-zinc-50 p-2.5 dark:bg-zinc-950/40">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Tramos Totales</span>
+                <span className="text-sm font-extrabold text-zinc-800 dark:text-white">{coberturaData.totalTramos}</span>
+              </div>
+              <div className="rounded-xl bg-zinc-50 p-2.5 dark:bg-zinc-950/40">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Con Datos Reales</span>
+                <span className="text-sm font-extrabold text-zinc-800 dark:text-white">{coberturaData.tramosConHistorico}</span>
+              </div>
+              <div className="rounded-xl bg-zinc-50 p-2.5 dark:bg-zinc-950/40">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Sin Datos (Fallback)</span>
+                <span className="text-sm font-extrabold text-zinc-500 dark:text-zinc-400">{coberturaData.tramosSinHistorico}</span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-100 dark:border-zinc-800 text-zinc-400 font-bold">
+                    <th className="pb-2">Tramo (Origen → Destino)</th>
+                    <th className="pb-2 text-center">Duración Promedio</th>
+                    <th className="pb-2 text-center">Muestras</th>
+                    <th className="pb-2 text-right">Estado Tránsito</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {coberturaData.tramos?.map((tramo: any, idx: number) => {
+                    let statusLabel = 'Sin datos';
+                    let statusColor = 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400';
+                    
+                    if (tramo.tieneHistorico && tramo.promedioSegundos) {
+                      const avg = tramo.promedioSegundos;
+                      if (avg <= 110) {
+                        statusLabel = 'Tránsito Fluido 🟢';
+                        statusColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-450 font-bold';
+                      } else if (avg <= 200) {
+                        statusLabel = 'Moderado 🟡';
+                        statusColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 font-bold';
+                      } else {
+                        statusLabel = 'Congestión 🔴';
+                        statusColor = 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 font-extrabold animate-pulse';
+                      }
+                    }
+
+                    return (
+                      <tr key={`tramo-${idx}`} className="text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/10">
+                        <td className="py-2.5 font-medium pr-2">
+                          {tramo.ordenOrigen}. {tramo.paradaOrigen} <span className="text-zinc-400">→</span> {tramo.paradaDestino}
+                        </td>
+                        <td className="py-2.5 text-center font-semibold text-zinc-900 dark:text-white">
+                          {tramo.promedioSegundos ? `${Math.round(tramo.promedioSegundos / 60)} min ${tramo.promedioSegundos % 60} seg` : 'N/A'}
+                        </td>
+                        <td className="py-2.5 text-center font-medium text-zinc-500 font-mono">
+                          {tramo.muestras}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase ${statusColor}`}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* ACTIVE BUSES MONITORING TABLE */}
         <div className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -907,6 +1279,7 @@ export default function AdminDashboardPage() {
                     <th className="pb-3 col-span-2">Ubicación</th>
                     <th className="pb-3">Fecha Reporte</th>
                     <th className="pb-3">Usuario</th>
+                    <th className="pb-3">Asociación Bus</th>
                     <th className="pb-3 text-right">Acción</th>
                   </tr>
                 </thead>
@@ -938,6 +1311,18 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3.5 pr-4 text-zinc-500 truncate max-w-[120px]" title={reporte.usuario?.email || ''}>
                         {reporte.usuario?.email || 'Anónimo'}
+                      </td>
+                      <td className="py-3.5 pr-4">
+                        {reporte.asociacion ? (
+                          <div className="flex flex-col text-[10px] leading-tight font-bold text-zinc-900 dark:text-white">
+                            <span className="text-blue-600 dark:text-blue-400">🚌 Unidad {reporte.asociacion.codigoUnidad}</span>
+                            <span className="text-[9px] text-zinc-400 font-medium font-mono">
+                              {reporte.asociacion.distanciaMetros}m | {Math.round(reporte.asociacion.diferenciaTiempoSegundos / 60)} min
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-zinc-400 italic">No asociado</span>
+                        )}
                       </td>
                       <td className="py-3.5 text-right">
                         <button
