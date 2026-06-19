@@ -83,9 +83,14 @@ export class MetricasService {
             { fechaFin: { gte: startOfDay } },
           ],
         },
+        include: {
+          ruta: true,
+        },
       });
 
       let totalSegundosActivo = 0;
+      const rutasOperadasSet = new Set<string>();
+
       for (const t of trayectorias) {
         const tInicio = t.fechaInicio.getTime() < startOfDay.getTime() ? startOfDay : t.fechaInicio;
         const tFin = !t.fechaFin || t.fechaFin.getTime() > endOfDay.getTime() ? endOfDay : t.fechaFin;
@@ -94,8 +99,15 @@ export class MetricasService {
         if (diffSegs > 0) {
           totalSegundosActivo += diffSegs;
         }
+
+        if (t.ruta) {
+          const codStr = t.ruta.codigoRuta ? ` [${t.ruta.codigoRuta}]` : '';
+          const activeStr = t.estado === 'EN_CURSO' ? ' (En Curso)' : '';
+          rutasOperadasSet.add(`${t.ruta.nombreRuta}${codStr}${activeStr}`);
+        }
       }
       const horasOperativas = Number((totalSegundosActivo / 3600).toFixed(2));
+      const rutasOperadas = Array.from(rutasOperadasSet);
 
       resultado.push({
         idUnidad: unidad.idUnidad,
@@ -104,6 +116,7 @@ export class MetricasService {
         kilometrosRecorridos,
         horasOperativas,
         vueltasCompletadas,
+        rutasOperadas,
       });
     }
 

@@ -666,6 +666,21 @@ export default function AdminDashboardPage() {
                       <span className="text-[9px] uppercase font-bold text-zinc-400">Vueltas OK</span>
                     </div>
                   </div>
+
+                  <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80">
+                    <span className="text-[9px] uppercase font-bold text-zinc-400 block mb-1">Ruta en la que se encuentra ese día:</span>
+                    {prod.rutasOperadas && prod.rutasOperadas.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {prod.rutasOperadas.map((r: string, idx: number) => (
+                          <span key={`r-op-${idx}`} className="text-[9px] font-bold bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 px-1.5 py-0.5 rounded">
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] italic text-zinc-400 dark:text-zinc-500 block">Ninguna (Inactivo)</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
