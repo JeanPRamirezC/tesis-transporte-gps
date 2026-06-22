@@ -7,6 +7,7 @@ import {
   Polyline,
   useJsApiLoader,
   InfoWindow,
+  TrafficLayer,
 } from '@react-google-maps/api';
 
 type Punto = {
@@ -71,6 +72,7 @@ type Props = {
   onSelectIncidente?: (incidente: Incidente) => void;
 };
 
+const GOOGLE_MAPS_LIBRARIES: ("places" | "drawing" | "geometry" | "visualization")[] = ['places'];
 const EMPTY_ARRAY: any[] = [];
 
 export function MapaInteractivo({
@@ -90,8 +92,10 @@ export function MapaInteractivo({
 }: Props) {
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+    libraries: GOOGLE_MAPS_LIBRARIES,
   });
 
+  const [mostrarTrafico, setMostrarTrafico] = useState(true);
   const [activeUnit, setActiveUnit] = useState<Unidad | null>(null);
   const [activeIncidente, setActiveIncidente] = useState<Incidente | null>(null);
   const [walkingPaths, setWalkingPaths] = useState<Record<number, google.maps.LatLng[]>>({});
@@ -197,6 +201,22 @@ export function MapaInteractivo({
         </div>
       )}
 
+      {/* Floating Traffic Control Button */}
+      <button
+        type="button"
+        onClick={() => setMostrarTrafico(!mostrarTrafico)}
+        className={`absolute top-16 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-xl border bg-white/85 shadow-md backdrop-blur-xs transition-all active:scale-95 hover:bg-white dark:bg-zinc-900/85 dark:hover:bg-zinc-900 ${
+          mostrarTrafico
+            ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20'
+            : 'border-zinc-200 dark:border-zinc-800'
+        }`}
+        title="Alternar Capa de Tráfico"
+      >
+        <span className={`text-lg transition-transform duration-200 ${mostrarTrafico ? 'scale-110' : 'scale-90 opacity-70'}`}>
+          🚦
+        </span>
+      </button>
+
       <GoogleMap
         mapContainerStyle={{ width: '100%', height: '100%' }}
         center={center}
@@ -215,6 +235,8 @@ export function MapaInteractivo({
           ],
         }}
       >
+        {/* Live Traffic Layer */}
+        {mostrarTrafico && <TrafficLayer />}
         {/* Main Route shape */}
         <Polyline
           path={shape.map((p) => ({ lat: p.latitud, lng: p.longitud }))}
@@ -372,6 +394,9 @@ export function MapaInteractivo({
         {/* Active live units/buses */}
         {unidades.map((unidad) => {
           if (!unidad.ultimaPosicion) return null;
+          const isSelected = activeUnit?.idUnidad === unidad.idUnidad;
+          const rumbo = unidad.ultimaPosicion.rumbo || 0;
+
           return (
             <Marker
               key={`unidad-${unidad.idUnidad}`}
@@ -385,8 +410,19 @@ export function MapaInteractivo({
                 setActiveIncidente(null);
               }}
               icon={{
-                url: 'https://maps.google.com/mapfiles/kml/shapes/bus.png',
-                scaledSize: new google.maps.Size(26, 26),
+                path: 'M 0,-18 L -6,-10 L 6,-10 Z M -11,0 A 11,11 0 1,0 11,0 A 11,11 0 1,0 -11,0',
+                fillColor: isSelected ? '#f59e0b' : '#2563eb', // Amber if selected, Blue otherwise
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 1.5,
+                scale: 1.1,
+                rotation: rumbo,
+              }}
+              label={{
+                text: unidad.codigoUnidad,
+                color: '#ffffff',
+                fontSize: '10px',
+                fontWeight: 'bold',
               }}
             />
           );

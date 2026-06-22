@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/services/api';
 import { MapaInteractivo } from '@/components/MapaInteractivo';
+import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
+
+const GOOGLE_MAPS_LIBRARIES: ("places" | "drawing" | "geometry" | "visualization")[] = ['places'];
 
 type Ruta = {
   idRuta: number;
@@ -79,6 +82,49 @@ type RutaMapaResponse = {
 
 export default function HomePage() {
   const { user, logout } = useAuth();
+
+  const { isLoaded } = useJsApiLoader({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+    libraries: GOOGLE_MAPS_LIBRARIES,
+  });
+
+  // Autocomplete Text & Instance States
+  const [origenText, setOrigenText] = useState('');
+  const [destinoText, setDestinoText] = useState('');
+  const [origenAutocomplete, setOrigenAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const [destinoAutocomplete, setDestinoAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const onOrigenPlaceChanged = () => {
+    if (origenAutocomplete !== null) {
+      const place = origenAutocomplete.getPlace();
+      if (place.geometry && place.geometry.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setOrigenLat(lat.toFixed(5));
+        setOrigenLon(lng.toFixed(5));
+        setOrigenPin({ latitud: lat, longitud: lng });
+        if (place.formatted_address) {
+          setOrigenText(place.formatted_address);
+        }
+      }
+    }
+  };
+
+  const onDestinoPlaceChanged = () => {
+    if (destinoAutocomplete !== null) {
+      const place = destinoAutocomplete.getPlace();
+      if (place.geometry && place.geometry.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setDestinoLat(lat.toFixed(5));
+        setDestinoLon(lng.toFixed(5));
+        setDestinoPin({ latitud: lat, longitud: lng });
+        if (place.formatted_address) {
+          setDestinoText(place.formatted_address);
+        }
+      }
+    }
+  };
   
   // Tabs & Navigation
   const [activeTab, setActiveTab] = useState<'planificador' | 'rutas' | 'incidentes'>('planificador');
@@ -226,11 +272,35 @@ export default function HomePage() {
       setOrigenLat(lat.toFixed(5));
       setOrigenLon(lng.toFixed(5));
       setMapMode('view');
+      if (typeof google !== 'undefined' && google.maps && google.maps.Geocoder) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            setOrigenText(results[0].formatted_address);
+          } else {
+            setOrigenText(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          }
+        });
+      } else {
+        setOrigenText(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
     } else if (mapMode === 'set-destination') {
       setDestinoPin({ latitud: lat, longitud: lng });
       setDestinoLat(lat.toFixed(5));
       setDestinoLon(lng.toFixed(5));
       setMapMode('view');
+      if (typeof google !== 'undefined' && google.maps && google.maps.Geocoder) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            setDestinoText(results[0].formatted_address);
+          } else {
+            setDestinoText(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          }
+        });
+      } else {
+        setDestinoText(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
     } else if (mapMode === 'report') {
       if (!user) {
         alert('Debes iniciar sesión para reportar incidentes.');
@@ -316,6 +386,8 @@ export default function HomePage() {
     setOrigenLon('');
     setDestinoLat('');
     setDestinoLon('');
+    setOrigenText('');
+    setDestinoText('');
     setItinerarios([]);
     setItinerarioSeleccionado(null);
     setPlannerError(null);
@@ -445,8 +517,8 @@ export default function HomePage() {
                 <div className="rounded-xl border border-zinc-100 bg-zinc-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-950/50">
                   <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Buscar Recorrido</h3>
                   <form onSubmit={calcularRuta} className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">📍 Origen</label>
                         <button
                           type="button"
@@ -458,26 +530,46 @@ export default function HomePage() {
                           Marcar en mapa
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+
+                      {isLoaded ? (
+                        <Autocomplete
+                          onLoad={(ac) => setOrigenAutocomplete(ac)}
+                          onPlaceChanged={onOrigenPlaceChanged}
+                          options={{
+                            bounds: new google.maps.LatLngBounds(
+                              new google.maps.LatLng(0.31, -78.16),
+                              new google.maps.LatLng(0.39, -78.08)
+                            ),
+                            componentRestrictions: { country: 'ec' }
+                          }}
+                        >
+                          <input
+                            type="text"
+                            placeholder="Buscar dirección de origen..."
+                            value={origenText}
+                            onChange={(e) => setOrigenText(e.target.value)}
+                            className="w-full rounded-lg border border-zinc-200 bg-white/75 px-3 py-2 text-xs text-zinc-700 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                          />
+                        </Autocomplete>
+                      ) : (
                         <input
                           type="text"
-                          placeholder="Latitud"
-                          readOnly
-                          value={origenLat}
-                          className="w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs text-zinc-700 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                          placeholder="Cargando buscador..."
+                          disabled
+                          className="w-full rounded-lg border border-zinc-200 bg-white/20 px-3 py-2 text-xs text-zinc-400 outline-none dark:border-zinc-800 dark:bg-zinc-900"
                         />
-                        <input
-                          type="text"
-                          placeholder="Longitud"
-                          readOnly
-                          value={origenLon}
-                          className="w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs text-zinc-700 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                        />
-                      </div>
+                      )}
+
+                      {origenLat && origenLon && (
+                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 bg-zinc-50 dark:bg-zinc-950/50 p-1.5 rounded border border-zinc-100 dark:border-zinc-900 flex justify-between font-mono">
+                          <span>Lat: {origenLat}</span>
+                          <span>Lng: {origenLon}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">🏁 Destino</label>
                         <button
                           type="button"
@@ -489,22 +581,42 @@ export default function HomePage() {
                           Marcar en mapa
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+
+                      {isLoaded ? (
+                        <Autocomplete
+                          onLoad={(ac) => setDestinoAutocomplete(ac)}
+                          onPlaceChanged={onDestinoPlaceChanged}
+                          options={{
+                            bounds: new google.maps.LatLngBounds(
+                              new google.maps.LatLng(0.31, -78.16),
+                              new google.maps.LatLng(0.39, -78.08)
+                            ),
+                            componentRestrictions: { country: 'ec' }
+                          }}
+                        >
+                          <input
+                            type="text"
+                            placeholder="Buscar dirección de destino..."
+                            value={destinoText}
+                            onChange={(e) => setDestinoText(e.target.value)}
+                            className="w-full rounded-lg border border-zinc-200 bg-white/75 px-3 py-2 text-xs text-zinc-700 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                          />
+                        </Autocomplete>
+                      ) : (
                         <input
                           type="text"
-                          placeholder="Latitud"
-                          readOnly
-                          value={destinoLat}
-                          className="w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs text-zinc-700 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                          placeholder="Cargando buscador..."
+                          disabled
+                          className="w-full rounded-lg border border-zinc-200 bg-white/20 px-3 py-2 text-xs text-zinc-400 outline-none dark:border-zinc-800 dark:bg-zinc-900"
                         />
-                        <input
-                          type="text"
-                          placeholder="Longitud"
-                          readOnly
-                          value={destinoLon}
-                          className="w-full rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs text-zinc-700 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                        />
-                      </div>
+                      )}
+
+                      {destinoLat && destinoLon && (
+                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 bg-zinc-50 dark:bg-zinc-950/50 p-1.5 rounded border border-zinc-100 dark:border-zinc-900 flex justify-between font-mono">
+                          <span>Lat: {destinoLat}</span>
+                          <span>Lng: {destinoLon}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 items-center">
