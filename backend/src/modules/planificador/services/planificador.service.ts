@@ -213,8 +213,8 @@ export class PlanificadorService {
       });
     }
 
-    // 4. Encontrar paradas cercanas al origen y al destino (top 5 más cercanas en un rango de 2.5 km)
-    const MAX_WALK_LIMIT = 2500;
+    // 4. Encontrar paradas cercanas al origen y al destino (top 5 más cercanas en un rango de 1.2 km)
+    const MAX_WALK_LIMIT = 1200;
     const K_CERCANAS = 5;
 
     const paradasOrigen = paradas
@@ -660,7 +660,10 @@ export class PlanificadorService {
         if (a.transbordos !== b.transbordos) {
           return a.transbordos - b.transbordos;
         }
-        return a.tiempoTotalSegundos - b.tiempoTotalSegundos;
+        // Priorizar menor caminada percibida (factor de peso 2x para el tiempo de caminata)
+        const tiempoPercibidoA = a.tiempoTotalSegundos + (a.distanciaTotalCaminataMetros / 1.39);
+        const tiempoPercibidoB = b.tiempoTotalSegundos + (b.distanciaTotalCaminataMetros / 1.39);
+        return tiempoPercibidoA - tiempoPercibidoB;
       })
       .slice(0, 5);
 
