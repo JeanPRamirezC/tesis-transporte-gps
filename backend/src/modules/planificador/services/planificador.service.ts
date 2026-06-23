@@ -213,7 +213,10 @@ export class PlanificadorService {
       });
     }
 
-    // 4. Encontrar paradas cercanas al origen y al destino
+    // 4. Encontrar paradas cercanas al origen y al destino (top 5 más cercanas en un rango de 2.5 km)
+    const MAX_WALK_LIMIT = 2500;
+    const K_CERCANAS = 5;
+
     const paradasOrigen = paradas
       .map((p) => ({
         parada: p,
@@ -224,7 +227,9 @@ export class PlanificadorService {
           Number(p.longitud),
         ),
       }))
-      .filter((item) => item.distancia <= maxCaminataMetros);
+      .filter((item) => item.distancia <= MAX_WALK_LIMIT)
+      .sort((a, b) => a.distancia - b.distancia)
+      .slice(0, K_CERCANAS);
 
     const paradasDestino = paradas
       .map((p) => ({
@@ -236,7 +241,9 @@ export class PlanificadorService {
           Number(p.longitud),
         ),
       }))
-      .filter((item) => item.distancia <= maxCaminataMetros);
+      .filter((item) => item.distancia <= MAX_WALK_LIMIT)
+      .sort((a, b) => a.distancia - b.distancia)
+      .slice(0, K_CERCANAS);
 
     // 5. RUTAS DIRECTAS (0 Transbordos, soporte circular)
     for (const po of paradasOrigen) {

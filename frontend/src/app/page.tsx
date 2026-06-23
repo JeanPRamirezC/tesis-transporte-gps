@@ -144,7 +144,6 @@ export default function HomePage() {
   const [origenLon, setOrigenLon] = useState('');
   const [destinoLat, setDestinoLat] = useState('');
   const [destinoLon, setDestinoLon] = useState('');
-  const [maxCaminata, setMaxCaminata] = useState('800');
   const [itinerarios, setItinerarios] = useState<Itinerario[]>([]);
   const [itinerarioSeleccionado, setItinerarioSeleccionado] = useState<Itinerario | null>(null);
   const [cargandoPlanner, setCargandoPlanner] = useState(false);
@@ -335,7 +334,6 @@ export default function HomePage() {
           origenLon,
           destinoLat,
           destinoLon,
-          maxCaminataMetros: maxCaminata,
           excluirEspera: excluirEspera,
         },
       });
@@ -619,19 +617,7 @@ export default function HomePage() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 items-center">
-                      <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Caminata máx (m)</label>
-                      <select
-                        className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                        value={maxCaminata}
-                        onChange={(e) => setMaxCaminata(e.target.value)}
-                      >
-                        <option value="400">400 m</option>
-                        <option value="800">800 m</option>
-                        <option value="1200">1.2 km</option>
-                        <option value="2000">2.0 km</option>
-                      </select>
-                    </div>
+
 
                     <div className="flex items-center gap-2 pt-1">
                       <input
