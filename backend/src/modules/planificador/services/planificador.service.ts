@@ -192,7 +192,7 @@ export class PlanificadorService {
       distCaminataDirecta / VELOCIDAD_CAMINATA_MPS,
     );
 
-    if (distCaminataDirecta <= 2500) {
+    if (distCaminataDirecta <= 800) {
       itinerarios.push({
         tipo: 'DIRECT_WALK',
         tiempoTotalSegundos: tiempoCaminataDirectaSeg,
@@ -660,9 +660,9 @@ export class PlanificadorService {
         if (a.transbordos !== b.transbordos) {
           return a.transbordos - b.transbordos;
         }
-        // Priorizar menor caminada percibida (factor de peso 2x para el tiempo de caminata)
-        const tiempoPercibidoA = a.tiempoTotalSegundos + (a.distanciaTotalCaminataMetros / 1.39);
-        const tiempoPercibidoB = b.tiempoTotalSegundos + (b.distanciaTotalCaminataMetros / 1.39);
+        // Priorizar menor caminada percibida (factor de peso de castigo de 5x para el tiempo de caminata)
+        const tiempoPercibidoA = a.tiempoTotalSegundos + (a.distanciaTotalCaminataMetros / 1.39) * 4.0;
+        const tiempoPercibidoB = b.tiempoTotalSegundos + (b.distanciaTotalCaminataMetros / 1.39) * 4.0;
         return tiempoPercibidoA - tiempoPercibidoB;
       })
       .slice(0, 5);
