@@ -534,10 +534,12 @@ export default function HomePage() {
                           onLoad={(ac) => setOrigenAutocomplete(ac)}
                           onPlaceChanged={onOrigenPlaceChanged}
                           options={{
-                            bounds: new google.maps.LatLngBounds(
-                              new google.maps.LatLng(0.31, -78.16),
-                              new google.maps.LatLng(0.39, -78.08)
-                            ),
+                            bounds: {
+                              north: 0.39,
+                              south: 0.31,
+                              east: -78.08,
+                              west: -78.16
+                            },
                             componentRestrictions: { country: 'ec' }
                           }}
                         >
@@ -585,10 +587,12 @@ export default function HomePage() {
                           onLoad={(ac) => setDestinoAutocomplete(ac)}
                           onPlaceChanged={onDestinoPlaceChanged}
                           options={{
-                            bounds: new google.maps.LatLngBounds(
-                              new google.maps.LatLng(0.31, -78.16),
-                              new google.maps.LatLng(0.39, -78.08)
-                            ),
+                            bounds: {
+                              north: 0.39,
+                              south: 0.31,
+                              east: -78.08,
+                              west: -78.16
+                            },
                             componentRestrictions: { country: 'ec' }
                           }}
                         >
