@@ -409,13 +409,18 @@ export class GtfsService {
       const unitEta = rutaEtas.unidades.find((u: any) => u.idUnidad === t.idUnidad);
       if (!unitEta || !unitEta.etas || unitEta.etas.length === 0) continue;
 
+      // Filtrar para mantener solo las paradas futuras (delante del bus en la vuelta actual)
+      // Esto evita que las paradas ya visitadas (que corresponden a la siguiente vuelta) alteren el orden temporal (Error E022)
+      const nextStopSequence = unitEta.etas[0].ordenParada;
+      const upcomingEtas = unitEta.etas.filter((eta: any) => eta.ordenParada >= nextStopSequence);
+
       const parts = formatEC.formatToParts(t.fechaInicio);
       const partMap = new Map(parts.map(p => [p.type, p.value]));
       const yyyymmdd = `${partMap.get('year')}${partMap.get('month')}${partMap.get('day')}`;
       const hhmmss = `${partMap.get('hour')}${partMap.get('minute')}${partMap.get('second')}`;
       const tripId = `ADD_${t.ruta.codigoRuta}_${t.unidad.codigoUnidad}_${yyyymmdd}_${hhmmss}`;
 
-      const stopTimeUpdates = unitEta.etas.map((eta: any) => {
+      const stopTimeUpdates = upcomingEtas.map((eta: any) => {
         const etaTimestamp = Math.round(ahora.getTime() / 1000) + eta.etaSegundos;
 
         return transit_realtime.TripUpdate.StopTimeUpdate.create({
@@ -427,8 +432,12 @@ export class GtfsService {
           departure: transit_realtime.TripUpdate.StopTimeEvent.create({
             time: etaTimestamp,
           }),
+          scheduleRelationship: transit_realtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.SCHEDULED,
         });
       });
+
+      // Ordenar por stopSequence ascendente para cumplir con la especificación GTFS-RT (Error E002)
+      stopTimeUpdates.sort((a: any, b: any) => a.stopSequence - b.stopSequence);
 
       const entity = transit_realtime.FeedEntity.create({
         id: `trip_update_${t.idTrayectoria}`,
@@ -437,6 +446,10 @@ export class GtfsService {
             tripId,
             routeId: String(t.idRuta),
             scheduleRelationship: transit_realtime.TripDescriptor.ScheduleRelationship.ADDED,
+          }),
+          vehicle: transit_realtime.VehicleDescriptor.create({
+            id: t.unidad.codigoUnidad,
+            label: t.unidad.placa ?? t.unidad.codigoUnidad,
           }),
           stopTimeUpdate: stopTimeUpdates,
           timestamp: Math.round(ahora.getTime() / 1000),

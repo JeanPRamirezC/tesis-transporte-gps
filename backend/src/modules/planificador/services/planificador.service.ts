@@ -275,7 +275,7 @@ export class PlanificadorService {
 
             // Calcular ETA en tiempo real o fallback
             const etasRuta = await getEtasRuta(ruta.idRuta);
-            let tiempoEsperaSegundos = 300; // Fallback 5 minutos
+            let tiempoEsperaSegundos = 600; // Fallback 10 minutos
             let busActivo = false;
             let codigoBus: string | null = null;
 
@@ -298,12 +298,12 @@ export class PlanificadorService {
               const catchableUnit = unitsWithEta.find((item: any) => item.etaSegundos >= tiempoWalk1);
 
               if (catchableUnit) {
-                // El tiempo de espera es la diferencia entre cuando llega el bus y cuando llega el usuario
-                tiempoEsperaSegundos = catchableUnit.etaSegundos - tiempoWalk1;
+                // El tiempo de espera es la diferencia entre cuando llega el bus y cuando llega el usuario, cap a 15 min
+                tiempoEsperaSegundos = Math.min(catchableUnit.etaSegundos - tiempoWalk1, 900);
                 busActivo = true;
                 codigoBus = catchableUnit.unidad.codigoUnidad;
               } else {
-                tiempoEsperaSegundos = 300;
+                tiempoEsperaSegundos = 600;
                 busActivo = false;
                 codigoBus = null;
               }
@@ -456,7 +456,7 @@ export class PlanificadorService {
 
                     // Calcular ETA en tiempo real o fallback para R1
                     const etasR1 = await getEtasRuta(r1.idRuta);
-                    let tiempoEsperaR1 = 300; // Fallback 5 min
+                    let tiempoEsperaR1 = 600; // Fallback 10 min
                     let busActivoR1 = false;
                     let codigoBusR1: string | null = null;
 
@@ -477,11 +477,11 @@ export class PlanificadorService {
                       const catchableUnit1 = unitsWithEta1.find((item: any) => item.etaSegundos >= tiempoWalk1);
 
                       if (catchableUnit1) {
-                        tiempoEsperaR1 = catchableUnit1.etaSegundos - tiempoWalk1;
+                        tiempoEsperaR1 = Math.min(catchableUnit1.etaSegundos - tiempoWalk1, 900);
                         busActivoR1 = true;
                         codigoBusR1 = catchableUnit1.unidad.codigoUnidad;
                       } else {
-                        tiempoEsperaR1 = 300;
+                        tiempoEsperaR1 = 600;
                         busActivoR1 = false;
                         codigoBusR1 = null;
                       }
@@ -489,7 +489,7 @@ export class PlanificadorService {
 
                     // Calcular ETA en tiempo real o fallback para R2
                     const etasR2 = await getEtasRuta(r2.idRuta);
-                    let tiempoEsperaR2 = 300; // Fallback 5 min
+                    let tiempoEsperaR2 = 600; // Fallback 10 min
                     let busActivoR2 = false;
                     let codigoBusR2: string | null = null;
 
@@ -657,12 +657,19 @@ export class PlanificadorService {
 
     const mejoresItinerarios = itinerariosUnicos
       .sort((a, b) => {
-        if (a.transbordos !== b.transbordos) {
-          return a.transbordos - b.transbordos;
-        }
-        // Priorizar menor caminada percibida (factor de peso de castigo de 5x para el tiempo de caminata)
-        const tiempoPercibidoA = a.tiempoTotalSegundos + (a.distanciaTotalCaminataMetros / 1.39) * 4.0;
-        const tiempoPercibidoB = b.tiempoTotalSegundos + (b.distanciaTotalCaminataMetros / 1.39) * 4.0;
+        // En lugar de priorizar transbordos de forma absoluta, usamos un costo percibido generalizado.
+        // Si una ruta con transbordo reduce significativamente el tiempo (más de 5 min / 300 seg), se prioriza.
+        const PENALIDAD_TRANSBORDO_SEG = 300; // 5 minutos de penalidad por la molestia del transbordo
+        const FACTOR_PENALIDAD_CAMINATA = 1.5; // Penalizar ligeramente la caminata sobre el tiempo en bus
+
+        const tiempoPercibidoA = a.tiempoTotalSegundos + 
+          (a.distanciaTotalCaminataMetros / 1.39) * FACTOR_PENALIDAD_CAMINATA + 
+          a.transbordos * PENALIDAD_TRANSBORDO_SEG;
+
+        const tiempoPercibidoB = b.tiempoTotalSegundos + 
+          (b.distanciaTotalCaminataMetros / 1.39) * FACTOR_PENALIDAD_CAMINATA + 
+          b.transbordos * PENALIDAD_TRANSBORDO_SEG;
+
         return tiempoPercibidoA - tiempoPercibidoB;
       })
       .slice(0, 5);
@@ -712,55 +719,74 @@ export class PlanificadorService {
 
     if (shapes.length === 0) return [];
 
-    let minDistanceO = Infinity;
-    let minDistanceD = Infinity;
-    let idxShapeOrigen = 0;
-    let idxShapeDestino = 0;
-
-    for (let i = 0; i < shapes.length; i++) {
-      const distO = calcularDistanciaMetros(
-        origenLat,
-        origenLon,
-        Number(shapes[i].latitud),
-        Number(shapes[i].longitud),
-      );
-      if (distO < minDistanceO) {
-        minDistanceO = distO;
-        idxShapeOrigen = i;
-      }
-
-      const distD = calcularDistanciaMetros(
-        destinoLat,
-        destinoLon,
-        Number(shapes[i].latitud),
-        Number(shapes[i].longitud),
-      );
-      if (distD < minDistanceD) {
-        minDistanceD = distD;
-        idxShapeDestino = i;
-      }
-    }
-
     const puntos = shapes.map((s) => ({
       lat: Number(s.latitud),
       lng: Number(s.longitud),
     }));
 
-    if (idxOrigen <= idxDestino) {
-      // Caso directo (no cruza la terminal)
-      // Ajustamos los índices de shape para que vayan en orden ascendente
+    // 1. Encontrar el punto de shape más cercano al origen en todo el arreglo
+    let minDistanceO = Infinity;
+    let idxShapeOrigen = 0;
+    for (let i = 0; i < shapes.length; i++) {
+      const distO = calcularDistanciaMetros(
+        origenLat,
+        origenLon,
+        puntos[i].lat,
+        puntos[i].lng,
+      );
+      if (distO < minDistanceO) {
+        minDistanceO = distO;
+        idxShapeOrigen = i;
+      }
+    }
+
+    // 2. Encontrar el punto de shape más cercano al destino, buscando secuencialmente hacia adelante
+    let minDistanceD = Infinity;
+    let idxShapeDestino = idxShapeOrigen;
+
+    const esDirecto = idxOrigen <= idxDestino;
+
+    if (esDirecto) {
+      // Búsqueda estrictamente hacia adelante en [idxShapeOrigen, shapes.length - 1]
+      for (let i = idxShapeOrigen; i < shapes.length; i++) {
+        const distD = calcularDistanciaMetros(
+          destinoLat,
+          destinoLon,
+          puntos[i].lat,
+          puntos[i].lng,
+        );
+        if (distD < minDistanceD) {
+          minDistanceD = distD;
+          idxShapeDestino = i;
+        }
+      }
+      return puntos.slice(idxShapeOrigen, idxShapeDestino + 1);
+    } else {
+      // Caso circular: búsqueda con wrap-around
+      let bestRelativeIdx = 0;
+      for (let j = 0; j < shapes.length; j++) {
+        const shapeIdx = (idxShapeOrigen + j) % shapes.length;
+        const distD = calcularDistanciaMetros(
+          destinoLat,
+          destinoLon,
+          puntos[shapeIdx].lat,
+          puntos[shapeIdx].lng,
+        );
+        if (distD < minDistanceD) {
+          minDistanceD = distD;
+          bestRelativeIdx = j;
+        }
+      }
+      idxShapeDestino = (idxShapeOrigen + bestRelativeIdx) % shapes.length;
+
       if (idxShapeOrigen <= idxShapeDestino) {
         return puntos.slice(idxShapeOrigen, idxShapeDestino + 1);
       } else {
-        // Fallback si por distancia GPS se cruzaron
-        return puntos.slice(idxShapeDestino, idxShapeOrigen + 1).reverse();
+        return [
+          ...puntos.slice(idxShapeOrigen),
+          ...puntos.slice(0, idxShapeDestino + 1),
+        ];
       }
-    } else {
-      // Caso circular (cruza la terminal, del final al principio)
-      return [
-        ...puntos.slice(idxShapeOrigen),
-        ...puntos.slice(0, idxShapeDestino + 1),
-      ];
     }
   }
 

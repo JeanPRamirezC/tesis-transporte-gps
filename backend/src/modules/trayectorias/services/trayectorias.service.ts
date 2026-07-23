@@ -226,6 +226,33 @@ export class TrayectoriasService {
 
       if (distanciaLlegada <= radioControl) {
         if (minutosTranscurridos >= ruta.tiempoMinimoRecorridoMin) {
+          // Validar que la unidad haya completado al menos el 75% de las paradas
+          // Esto evita cierres prematuros en rutas circulares o con tramos que se cruzan
+          const ultimoPaso = await this.prisma.pasoParadaActual.findUnique({
+            where: {
+              idUnidad_idRuta: {
+                idUnidad: registroGps.idUnidad,
+                idRuta: registroGps.idRuta,
+              },
+            },
+          });
+
+          const totalRutaParadas = await this.prisma.rutaParada.count({
+            where: { idRuta: registroGps.idRuta },
+          });
+
+          const paradasRequeridas = Math.floor(totalRutaParadas * 0.75);
+          const ordenActual = ultimoPaso ? ultimoPaso.ordenParada : 0;
+
+          if (totalRutaParadas > 0 && ordenActual < paradasRequeridas) {
+            return {
+              accion: 'PUNTO_LLEGADA_IGNORADO',
+              motivo: `La unidad está en el punto de control de llegada pero no ha completado el recorrido mínimo de paradas (Parada actual: ${ordenActual}/${totalRutaParadas}, requeridas: ${paradasRequeridas}).`,
+              distanciaLlegada,
+              minutosTranscurridos,
+            };
+          }
+
           // Consultar registros GPS de la trayectoria hasta el momento
           const registrosTrayectoria = await this.prisma.registroGps.findMany({
             where: {
@@ -451,6 +478,23 @@ export class TrayectoriasService {
     return {
       procesadas: trayectoriasEnCurso.length,
       cerradas: cerradasCount,
+    };
+  }
+
+  async limpiarTrayectoriasAntiguas(limite: Date) {
+    const resultado = await this.prisma.trayectoria.deleteMany({
+      where: {
+        creadoEn: {
+          lt: limite,
+        },
+        estado: {
+          not: 'EN_CURSO',
+        },
+      },
+    });
+
+    return {
+      registrosEliminados: resultado.count,
     };
   }
 }

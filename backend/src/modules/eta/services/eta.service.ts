@@ -45,22 +45,85 @@ export class EtaService {
     orderBy: { ordenParada: 'asc' },
   });
 
-  const promedios = await this.prisma.tiempoTramo.groupBy({
+  const ahora = new Date();
+
+  // Obtener la hora actual en la zona horaria de Ecuador (America/Guayaquil)
+  const formatEC = new Intl.DateTimeFormat('es-EC', {
+    timeZone: 'America/Guayaquil',
+    hour: 'numeric',
+    hour12: false,
+  });
+  const horaActual = parseInt(formatEC.format(ahora));
+
+  // Definir una ventana horaria de ±1 hora (ej: para las 15:00, de 14:00 a 16:00)
+  const horaMinima = (horaActual - 1 + 24) % 24;
+  const horaMaxima = (horaActual + 1) % 24;
+
+  let promediosHorariosRaw: any[] = [];
+  try {
+    if (horaMinima <= horaMaxima) {
+      promediosHorariosRaw = await this.prisma.$queryRawUnsafe(`
+        SELECT 
+          id_parada_origen AS "idParadaOrigen", 
+          id_parada_destino AS "idParadaDestino", 
+          AVG(duracion_segundos)::integer AS "promedio", 
+          COUNT(*)::integer AS "muestras"
+        FROM tiempos_tramo
+        WHERE id_ruta = $1
+          AND EXTRACT(HOUR FROM (fecha_hora_origen AT TIME ZONE 'America/Guayaquil')) BETWEEN $2 AND $3
+        GROUP BY id_parada_origen, id_parada_destino
+      `, idRuta, horaMinima, horaMaxima);
+    } else {
+      promediosHorariosRaw = await this.prisma.$queryRawUnsafe(`
+        SELECT 
+          id_parada_origen AS "idParadaOrigen", 
+          id_parada_destino AS "idParadaDestino", 
+          AVG(duracion_segundos)::integer AS "promedio", 
+          COUNT(*)::integer AS "muestras"
+        FROM tiempos_tramo
+        WHERE id_ruta = $1
+          AND (
+            EXTRACT(HOUR FROM (fecha_hora_origen AT TIME ZONE 'America/Guayaquil')) >= $2
+            OR EXTRACT(HOUR FROM (fecha_hora_origen AT TIME ZONE 'America/Guayaquil')) <= $3
+          )
+        GROUP BY id_parada_origen, id_parada_destino
+      `, idRuta, horaMinima, horaMaxima);
+    }
+  } catch (err) {
+    console.error("Error al consultar promedios por franja horaria:", err);
+  }
+
+  const promediosGenerales = await this.prisma.tiempoTramo.groupBy({
     by: ['idParadaOrigen', 'idParadaDestino'],
     where: { idRuta },
     _avg: { duracionSegundos: true },
     _count: { idTiempoTramo: true },
   });
 
-  const mapaPromedios = new Map<string, { promedio: number; muestras: number }>();
+  const mapaPromedios = new Map<string, { promedio: number; muestras: number; esHorario: boolean }>();
 
-  for (const promedio of promedios) {
+  // Llenar primero con los promedios generales como base/fallback
+  for (const promedio of promediosGenerales) {
     const clave = `${promedio.idParadaOrigen}-${promedio.idParadaDestino}`;
-
     mapaPromedios.set(clave, {
       promedio: Math.round(promedio._avg.duracionSegundos ?? 0),
       muestras: promedio._count.idTiempoTramo,
+      esHorario: false,
     });
+  }
+
+  // Sobrescribir con promedios específicos por hora si contamos con suficiente significación estadística (min 3 muestras)
+  if (Array.isArray(promediosHorariosRaw)) {
+    for (const promedio of promediosHorariosRaw) {
+      if (promedio.muestras >= 3) {
+        const clave = `${promedio.idParadaOrigen}-${promedio.idParadaDestino}`;
+        mapaPromedios.set(clave, {
+          promedio: promedio.promedio,
+          muestras: promedio.muestras,
+          esHorario: true,
+        });
+      }
+    }
   }
 
   const unidades = [];
@@ -174,7 +237,7 @@ export class EtaService {
       let segundosTramo = 0;
       let muestrasHistoricas = 0;
       let estadoConfiabilidad: EstadoConfiabilidadEta = estadoGeneral;
-      let tipoCalculo: 'REAL_TIME_GPS' | 'HISTORICAL_AVERAGE' | 'GEOGRAPHIC_FALLBACK' = 'HISTORICAL_AVERAGE';
+      let tipoCalculo: 'REAL_TIME_GPS' | 'HISTORICAL_AVERAGE' | 'HISTORICAL_AVERAGE_HOUR' | 'GEOGRAPHIC_FALLBACK' = 'HISTORICAL_AVERAGE';
 
       const distanciaAlBus = calcularDistanciaMetros(
         Number(ultimoGps.latitud),
@@ -197,7 +260,7 @@ export class EtaService {
         if (promedio) {
           segundosTramo = promedio.promedio;
           muestrasHistoricas = promedio.muestras;
-          tipoCalculo = 'HISTORICAL_AVERAGE';
+          tipoCalculo = promedio.esHorario ? 'HISTORICAL_AVERAGE_HOUR' : 'HISTORICAL_AVERAGE';
         } else {
           // Fallback geográfico basado en la distancia real del tramo y velocidad de 18 km/h (5 m/s)
           const distanciaTramo = calcularDistanciaMetros(
@@ -490,13 +553,13 @@ export class EtaService {
   }
 
   async limpiarEstimacionesAntiguas() {
-    const limite30Dias = new Date();
-    limite30Dias.setDate(limite30Dias.getDate() - 30);
+    const limite20Dias = new Date();
+    limite20Dias.setDate(limite20Dias.getDate() - 20);
 
     const resultado = await this.prisma.estimacionEta.deleteMany({
       where: {
         fechaHoraCalculo: {
-          lt: limite30Dias,
+          lt: limite20Dias,
         },
       },
     });
@@ -504,7 +567,7 @@ export class EtaService {
     return {
       mensaje: 'Limpieza de estimaciones antiguas completada.',
       registrosEliminados: resultado.count,
-      limiteFecha: limite30Dias,
+      limiteFecha: limite20Dias,
     };
   }
 }

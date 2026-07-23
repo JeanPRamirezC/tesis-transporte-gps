@@ -109,7 +109,27 @@ export class MapaService {
             : null,
         };
       }),
-      eta,
+      eta: eta.unidades.map((u) => {
+        const nextEta = u.etas[0];
+        if (!nextEta) {
+          return {
+            codigoUnidad: u.codigoUnidad,
+            minutosEstimados: 0,
+            nombreParada: 'Fin de ruta',
+          };
+        }
+
+        // Si faltan menos de 20 segundos para la parada, consideramos que el tiempo se cumplió
+        // y pasamos automáticamente a mostrar la estimación hacia la siguiente parada (u.etas[1])
+        const yaLlego = nextEta.etaSegundos < 20;
+        const targetEta = yaLlego && u.etas[1] ? u.etas[1] : nextEta;
+
+        return {
+          codigoUnidad: u.codigoUnidad,
+          minutosEstimados: targetEta.etaMinutos ?? 0,
+          nombreParada: targetEta.nombreParada ?? 'Siguiente parada',
+        };
+      }),
     };
   }
 }

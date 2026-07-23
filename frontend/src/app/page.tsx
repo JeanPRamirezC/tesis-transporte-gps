@@ -100,6 +100,8 @@ export default function HomePage() {
       if (place.geometry && place.geometry.location) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
+        setItinerarios([]);
+        setItinerarioSeleccionado(null);
         setOrigenLat(lat.toFixed(5));
         setOrigenLon(lng.toFixed(5));
         setOrigenPin({ latitud: lat, longitud: lng });
@@ -116,6 +118,8 @@ export default function HomePage() {
       if (place.geometry && place.geometry.location) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
+        setItinerarios([]);
+        setItinerarioSeleccionado(null);
         setDestinoLat(lat.toFixed(5));
         setDestinoLon(lng.toFixed(5));
         setDestinoPin({ latitud: lat, longitud: lng });
@@ -164,6 +168,8 @@ export default function HomePage() {
   const [rutaIncidente, setRutaIncidente] = useState<string>('');
   const [submittingReport, setSubmittingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [reportFromBus, setReportFromBus] = useState(false);
+  const [idUnidadReporte, setIdUnidadReporte] = useState<number | ''>('');
 
   const fetchGlobalUnidades = async () => {
     try {
@@ -267,6 +273,8 @@ export default function HomePage() {
   // Map Click Logic
   const handleMapClick = (lat: number, lng: number) => {
     if (mapMode === 'set-origin') {
+      setItinerarios([]);
+      setItinerarioSeleccionado(null);
       setOrigenPin({ latitud: lat, longitud: lng });
       setOrigenLat(lat.toFixed(5));
       setOrigenLon(lng.toFixed(5));
@@ -284,6 +292,8 @@ export default function HomePage() {
         setOrigenText(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
       }
     } else if (mapMode === 'set-destination') {
+      setItinerarios([]);
+      setItinerarioSeleccionado(null);
       setDestinoPin({ latitud: lat, longitud: lng });
       setDestinoLat(lat.toFixed(5));
       setDestinoLon(lng.toFixed(5));
@@ -357,9 +367,17 @@ export default function HomePage() {
     setSubmittingReport(true);
 
     try {
+      let finalDesc = descIncidente;
+      if (reportFromBus && idUnidadReporte) {
+        const bus = globalUnidades.find(u => u.idUnidad === idUnidadReporte);
+        if (bus) {
+          finalDesc = `[Reportado desde Bus ${bus.codigoUnidad}] ${descIncidente}`.trim();
+        }
+      }
+
       await api.post('/reportes', {
         tipoIncidente,
-        descripcion: descIncidente || undefined,
+        descripcion: finalDesc || undefined,
         idRuta: rutaIncidente ? Number(rutaIncidente) : undefined,
         latitud: reportLat,
         longitud: reportLng,
@@ -368,6 +386,8 @@ export default function HomePage() {
       setShowReportModal(false);
       setDescIncidente('');
       setRutaIncidente('');
+      setIdUnidadReporte('');
+      setReportFromBus(false);
       fetchIncidentes(); // Refresh incidents overlay
     } catch (err: any) {
       console.error(err);
@@ -547,7 +567,11 @@ export default function HomePage() {
                             type="text"
                             placeholder="Buscar dirección de origen..."
                             value={origenText}
-                            onChange={(e) => setOrigenText(e.target.value)}
+                            onChange={(e) => {
+                              setOrigenText(e.target.value);
+                              setItinerarios([]);
+                              setItinerarioSeleccionado(null);
+                            }}
                             className="w-full rounded-lg border border-zinc-200 bg-white/75 px-3 py-2 text-xs text-zinc-700 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
                           />
                         </Autocomplete>
@@ -600,7 +624,11 @@ export default function HomePage() {
                             type="text"
                             placeholder="Buscar dirección de destino..."
                             value={destinoText}
-                            onChange={(e) => setDestinoText(e.target.value)}
+                            onChange={(e) => {
+                              setDestinoText(e.target.value);
+                              setItinerarios([]);
+                              setItinerarioSeleccionado(null);
+                            }}
                             className="w-full rounded-lg border border-zinc-200 bg-white/75 px-3 py-2 text-xs text-zinc-700 outline-none hover:border-zinc-300 focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
                           />
                         </Autocomplete>
@@ -824,9 +852,13 @@ export default function HomePage() {
                                       <h5 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Llegadas Estimadas (ETA)</h5>
                                       <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
                                         {selectedRouteData.eta.map((etaItem: any, idx: number) => (
-                                          <div key={`eta-${idx}`} className="flex justify-between text-xs py-1 border-b border-zinc-100 dark:border-zinc-800/50">
-                                            <span className="text-zinc-600 dark:text-zinc-400 font-medium">🚌 Unidad {etaItem.codigoUnidad}</span>
-                                            <span className="text-blue-600 font-bold">{Math.round(etaItem.minutosEstimados)} min</span>
+                                          <div key={`eta-${idx}`} className="flex justify-between items-center text-xs py-1 border-b border-zinc-100 dark:border-zinc-800/50">
+                                            <span className="text-zinc-600 dark:text-zinc-400 font-medium">
+                                              🚌 Unidad {etaItem.codigoUnidad} a <strong className="text-zinc-800 dark:text-zinc-200 font-semibold">{etaItem.nombreParada}</strong>
+                                            </span>
+                                            <span className="text-blue-600 font-bold bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded text-[10px]">
+                                              {etaItem.minutosEstimados <= 0 ? 'Llegando' : `${Math.round(etaItem.minutosEstimados)} min`}
+                                            </span>
                                           </div>
                                         ))}
                                       </div>
@@ -871,16 +903,36 @@ export default function HomePage() {
                   </p>
                   
                   {user ? (
-                    <button
-                      onClick={() => setMapMode('report')}
-                      className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 ${
-                        mapMode === 'report'
-                          ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
-                      }`}
-                    >
-                      {mapMode === 'report' ? '📍 Haz clic en el mapa...' : '🚨 Reportar un Incidente'}
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          setReportFromBus(false);
+                          setMapMode('report');
+                        }}
+                        className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 ${
+                          mapMode === 'report'
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
+                        }`}
+                      >
+                        {mapMode === 'report' ? '📍 Haz clic en el mapa...' : '🚨 Reportar en el Mapa'}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setReportFromBus(true);
+                          setMapMode('view');
+                          setReportLat(0.347);
+                          setReportLng(-78.117);
+                          setIdUnidadReporte('');
+                          setRutaIncidente('');
+                          setShowReportModal(true);
+                        }}
+                        className="w-full py-2.5 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/10"
+                      >
+                        🚌 Reportar desde mi Autobús
+                      </button>
+                    </div>
                   ) : (
                     <div className="text-[11px] bg-amber-50 border border-amber-200/50 text-amber-800 rounded-lg p-2.5 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-300">
                       Debes <Link href="/login" className="underline font-bold">iniciar sesión</Link> para enviar reportes de incidentes.
@@ -986,21 +1038,58 @@ export default function HomePage() {
             )}
 
             <form onSubmit={handleReportSubmit} className="space-y-4">
+              {reportFromBus ? (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-1">
+                    Selecciona tu Autobús / Unidad en tránsito
+                  </label>
+                  <select
+                    required
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                    value={idUnidadReporte}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) {
+                        const id = Number(val);
+                        setIdUnidadReporte(id);
+                        const bus = globalUnidades.find(u => u.idUnidad === id);
+                        if (bus && bus.ultimaPosicion) {
+                          setReportLat(Number(bus.ultimaPosicion.latitud));
+                          setReportLng(Number(bus.ultimaPosicion.longitud));
+                          if (bus.ultimaPosicion.idRuta) {
+                            setRutaIncidente(String(bus.ultimaPosicion.idRuta));
+                          }
+                        }
+                      } else {
+                        setIdUnidadReporte('');
+                      }
+                    }}
+                  >
+                    <option value="" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">-- Selecciona tu Bus (en tránsito) --</option>
+                    {globalUnidades.filter(u => u.ultimaPosicion).map((u) => (
+                      <option key={`bus-opt-${u.idUnidad}`} value={u.idUnidad} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+                        Bus {u.codigoUnidad} ({u.ultimaPosicion?.ruta?.nombreRuta || 'Sin ruta definida'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
               <div>
                 <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-1">
                   Tipo de Alerta
                 </label>
                 <select
-                  className="w-full rounded-xl border border-zinc-200 bg-white/50 px-3.5 py-2.5 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
                   value={tipoIncidente}
                   onChange={(e) => setTipoIncidente(e.target.value)}
                 >
-                  <option value="TRAFICO_ALTO">🚗 Tránsito Pesado</option>
-                  <option value="BUS_LLENO">👥 Bus Lleno / Alta Demanda</option>
-                  <option value="RETRASO_BUS">⏱️ Retraso de Unidad</option>
-                  <option value="ACCIDENTE">💥 Accidente de Tránsito</option>
-                  <option value="PARADA_DANADA">🚏 Parada Inhabilitada/Dañada</option>
-                  <option value="OTRO">⚠️ Otro Incidente</option>
+                  <option value="TRAFICO_ALTO" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">🚗 Tránsito Pesado</option>
+                  <option value="BUS_LLENO" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">👥 Bus Lleno / Alta Demanda</option>
+                  <option value="RETRASO_BUS" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">⏱️ Retraso de Unidad</option>
+                  <option value="ACCIDENTE" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">💥 Accidente de Tránsito</option>
+                  <option value="PARADA_DANADA" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">🚏 Parada Inhabilitada/Dañada</option>
+                  <option value="OTRO" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">⚠️ Otro Incidente</option>
                 </select>
               </div>
 
@@ -1009,35 +1098,45 @@ export default function HomePage() {
                   Descripción (Opcional, máx. 250 caracteres)
                 </label>
                 <textarea
-                  className="w-full rounded-xl border border-zinc-200 bg-white/50 px-3.5 py-2 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white resize-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white resize-none"
                   rows={3}
                   maxLength={250}
-                  placeholder="Detalles sobre el tráfico, número de bus o incidente..."
+                  placeholder={reportFromBus ? "Detalles sobre el incidente dentro del autobús..." : "Detalles sobre el tráfico, número de bus o incidente..."}
                   value={descIncidente}
                   onChange={(e) => setDescIncidente(e.target.value)}
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-1">
-                  Línea de Autobús Relacionada (Opcional)
-                </label>
-                <select
-                  className="w-full rounded-xl border border-zinc-200 bg-white/50 px-3.5 py-2.5 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white"
-                  value={rutaIncidente}
-                  onChange={(e) => setRutaIncidente(e.target.value)}
-                >
-                  <option value="">-- No aplica / Ninguna --</option>
-                  {rutas.map((r) => (
-                    <option key={`opt-${r.idRuta}`} value={r.idRuta}>
-                      {r.codigoRuta} - {r.nombreRuta}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!reportFromBus && (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-1">
+                    Línea de Autobús Relacionada (Opcional)
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs text-zinc-900 outline-none hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                    value={rutaIncidente}
+                    onChange={(e) => setRutaIncidente(e.target.value)}
+                  >
+                    <option value="" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">-- No aplica / Ninguna --</option>
+                    {rutas.map((r) => (
+                      <option key={`opt-${r.idRuta}`} value={r.idRuta} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+                        {r.codigoRuta} - {r.nombreRuta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="text-[10px] text-zinc-400 bg-zinc-50 dark:bg-zinc-950/50 p-2 rounded-lg border dark:border-zinc-800/80">
-                Coordenadas seleccionadas: <span className="font-semibold">{reportLat.toFixed(5)}, {reportLng.toFixed(5)}</span>
+                {reportFromBus ? (
+                  idUnidadReporte ? (
+                    <span>📍 Ubicación fijada al GPS del bus: <strong className="text-zinc-700 dark:text-zinc-300 font-semibold">{reportLat.toFixed(5)}, {reportLng.toFixed(5)}</strong></span>
+                  ) : (
+                    <span className="text-amber-500 font-semibold flex items-center gap-1">⚠️ Selecciona una unidad para cargar su ubicación.</span>
+                  )
+                ) : (
+                  <span>Coordenadas seleccionadas: <span className="font-semibold">{reportLat.toFixed(5)}, {reportLng.toFixed(5)}</span></span>
+                )}
               </div>
 
               <div className="flex gap-3 pt-2">

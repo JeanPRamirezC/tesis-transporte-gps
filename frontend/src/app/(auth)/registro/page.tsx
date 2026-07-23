@@ -91,7 +91,7 @@ export default function RegistroPage() {
               type="email"
               required
               disabled={loading || success}
-              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all placeholder:text-zinc-400 hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
+              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all placeholder:text-zinc-400 hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
               placeholder="ejemplo@correo.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -107,7 +107,7 @@ export default function RegistroPage() {
               type="password"
               required
               disabled={loading || success}
-              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all placeholder:text-zinc-400 hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
+              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all placeholder:text-zinc-400 hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
               placeholder="Mínimo 6 caracteres"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -123,7 +123,7 @@ export default function RegistroPage() {
               type="password"
               required
               disabled={loading || success}
-              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all placeholder:text-zinc-400 hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
+              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all placeholder:text-zinc-400 hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
               placeholder="Confirmar contraseña"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -137,12 +137,12 @@ export default function RegistroPage() {
             <select
               id="rol"
               disabled={loading || success}
-              className="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-950/50 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 shadow-xs outline-none transition-all hover:border-zinc-300 focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white dark:hover:border-zinc-700 dark:focus:border-blue-500"
               value={rol}
               onChange={(e) => setRol(e.target.value as 'PUBLICO' | 'ADMIN')}
             >
-              <option value="PUBLICO">Ciudadano (Público)</option>
-              <option value="ADMIN">Administrador de Tránsito</option>
+              <option value="PUBLICO" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">Ciudadano (Público)</option>
+              <option value="ADMIN" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">Administrador de Tránsito</option>
             </select>
           </div>
 

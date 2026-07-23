@@ -98,9 +98,11 @@ export function MapaInteractivo({
   const [mostrarTrafico, setMostrarTrafico] = useState(true);
   const [activeUnit, setActiveUnit] = useState<Unidad | null>(null);
   const [activeIncidente, setActiveIncidente] = useState<Incidente | null>(null);
-  const [walkingPaths, setWalkingPaths] = useState<Record<number, google.maps.LatLng[]>>({});
+  const [walkingPaths, setWalkingPaths] = useState<Record<string, google.maps.LatLng[]>>({});
 
   React.useEffect(() => {
+    let active = true;
+
     if (typeof google === 'undefined' || !isLoaded || !itinerarioActivoPasos || itinerarioActivoPasos.length === 0) {
       setWalkingPaths((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
@@ -111,8 +113,9 @@ export function MapaInteractivo({
 
     const service = new google.maps.DirectionsService();
 
-    itinerarioActivoPasos.forEach((paso, index) => {
+    itinerarioActivoPasos.forEach((paso) => {
       if (paso.tipo === 'WALK' && paso.origen && paso.destino) {
+        const pathKey = `${paso.origen.lat},${paso.origen.lon}-${paso.destino.lat},${paso.destino.lon}`;
         service.route(
           {
             origin: { lat: paso.origen.lat, lng: paso.origen.lon },
@@ -120,17 +123,21 @@ export function MapaInteractivo({
             travelMode: google.maps.TravelMode.WALKING,
           },
           (result, status) => {
-            if (status === google.maps.DirectionsStatus.OK && result) {
+            if (active && status === google.maps.DirectionsStatus.OK && result) {
               const path = result.routes[0].overview_path;
               setWalkingPaths((prev) => ({
                 ...prev,
-                [index]: path,
+                [pathKey]: path,
               }));
             }
           }
         );
       }
     });
+
+    return () => {
+      active = false;
+    };
   }, [itinerarioActivoPasos, isLoaded]);
 
   if (!isLoaded) {
@@ -298,12 +305,13 @@ export function MapaInteractivo({
           itinerarioActivoPasos.map((paso, index) => {
             if (paso.tipo === 'WALK' && paso.origen && paso.destino) {
               // Draw walk path only if Directions path is loaded (avoid straight fallback line entirely)
-              const pathPoints = walkingPaths[index];
+              const pathKey = `${paso.origen.lat},${paso.origen.lon}-${paso.destino.lat},${paso.destino.lon}`;
+              const pathPoints = walkingPaths[pathKey];
               if (!pathPoints) return null;
 
               return (
                 <Polyline
-                  key={`${plannerKeyPrefix}-walk-${index}-real`}
+                  key={`${plannerKeyPrefix}-walk-${pathKey}`}
                   path={pathPoints}
                   options={{
                     strokeColor: '#71717a',
@@ -455,8 +463,9 @@ export function MapaInteractivo({
         {itinerarioActivoPasos && itinerarioActivoPasos.length > 0 && (
           itinerarioActivoPasos.map((paso, index) => {
             if (paso.tipo === 'TRANSIT' && paso.origen && paso.destino) {
+              const stopKey = `${paso.origen.lat},${paso.origen.lon}-${paso.destino.lat},${paso.destino.lon}`;
               return (
-                <React.Fragment key={`planner-stop-details-${index}`}>
+                <React.Fragment key={`planner-stop-details-${stopKey}`}>
                   {/* Boarding Stop */}
                   <Marker
                     position={{ lat: paso.origen.lat, lng: paso.origen.lon }}

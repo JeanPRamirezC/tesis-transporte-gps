@@ -12,7 +12,6 @@ export class AuthService {
   ) {}
 
   async registro(email: string, password: string, rol: RolUsuario = RolUsuario.PUBLICO) {
-    // Validar formato de email simple
     if (!email || !email.includes('@')) {
       throw new BadRequestException('Formato de correo electrónico inválido.');
     }
@@ -21,7 +20,6 @@ export class AuthService {
       throw new BadRequestException('La contraseña debe tener al menos 6 caracteres.');
     }
 
-    // Verificar si el email ya existe
     const usuarioExistente = await this.prisma.usuario.findUnique({
       where: { email },
     });
@@ -30,10 +28,8 @@ export class AuthService {
       throw new BadRequestException('El correo electrónico ya está registrado.');
     }
 
-    // Hashing de contraseña
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Guardar usuario en base de datos
     const nuevoUsuario = await this.prisma.usuario.create({
       data: {
         email,
@@ -55,7 +51,6 @@ export class AuthService {
       throw new BadRequestException('El correo y la contraseña son obligatorios.');
     }
 
-    // Buscar usuario por email
     const usuario = await this.prisma.usuario.findUnique({
       where: { email },
     });
@@ -64,14 +59,12 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales incorrectas.');
     }
 
-    // Verificar contraseña
     const passwordValido = await bcrypt.compare(password, usuario.passwordHash);
 
     if (!passwordValido) {
       throw new UnauthorizedException('Credenciales incorrectas.');
     }
 
-    // Firmar token JWT
     const payload = {
       sub: usuario.idUsuario,
       email: usuario.email,

@@ -113,13 +113,13 @@ export class ReportesService {
   }
 
   async limpiarReportesAntiguos() {
-    const limite30Dias = new Date();
-    limite30Dias.setDate(limite30Dias.getDate() - 30);
+    const limite20Dias = new Date();
+    limite20Dias.setDate(limite20Dias.getDate() - 20);
 
     const resultado = await this.prisma.reporteIncidente.deleteMany({
       where: {
         creadoEn: {
-          lt: limite30Dias,
+          lt: limite20Dias,
         },
       },
     });
@@ -127,7 +127,7 @@ export class ReportesService {
     return {
       mensaje: 'Limpieza de reportes históricos de incidentes completada.',
       registrosEliminados: resultado.count,
-      limiteFecha: limite30Dias,
+      limiteFecha: limite20Dias,
     };
   }
 }
